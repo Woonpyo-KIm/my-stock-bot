@@ -1,0 +1,5 @@
+streamlit
+finance-datareader
+requests
+pandas
+beautifulsoup4
