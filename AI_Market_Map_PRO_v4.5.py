@@ -6,12 +6,9 @@ import plotly.express as px
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import FinanceDataReader as fdr
 
-# 화면 제목 v4.5 지정
+# 버전 4.5로 고정
 st.set_page_config(page_title="AI Market Map PRO v4.5", page_icon="🗺️", layout="wide")
 
-# ==========================================
-# 📱 모바일 최적화 커스텀 CSS
-# ==========================================
 st.markdown("""
 <style>
 @media (max-width: 768px) {
@@ -33,7 +30,6 @@ COLOR_SCALE = [
     [1.0,  "#dc2626"]   
 ]
 
-# S&P 500 공식 섹터 자동 매핑
 SP500_SECTOR_MAP = {
     "Information Technology": "⚡ Technology",
     "Health Care": "🧬 Healthcare",
@@ -48,25 +44,6 @@ SP500_SECTOR_MAP = {
     "Materials": "🧪 Materials"
 }
 
-US_TOP_TICKERS = [
-    ("AAPL", "Apple", "Information Technology"), ("MSFT", "Microsoft", "Information Technology"), 
-    ("NVDA", "NVIDIA", "Information Technology"), ("GOOGL", "Alphabet", "Communication Services"),
-    ("AMZN", "Amazon", "Consumer Discretionary"), ("META", "Meta", "Communication Services"), 
-    ("BRK-B", "Berkshire", "Financials"), ("LLY", "Eli Lilly", "Health Care"),
-    ("TSLA", "Tesla", "Consumer Discretionary"), ("V", "Visa", "Financials"), 
-    ("JPM", "JPMorgan", "Financials"), ("UNH", "UnitedHealth", "Health Care"),
-    ("WMT", "Walmart", "Consumer Staples"), ("MA", "Mastercard", "Financials"), 
-    ("JNJ", "Johnson & Johnson", "Health Care"), ("PG", "P&G", "Consumer Staples"),
-    ("HD", "Home Depot", "Consumer Discretionary"), ("ORCL", "Oracle", "Information Technology"), 
-    ("CVX", "Chevron", "Energy"), ("MRK", "Merck", "Health Care"),
-    ("KO", "Coca-Cola", "Consumer Staples"), ("PEP", "PepsiCo", "Consumer Staples"), 
-    ("AVGO", "Broadcom", "Information Technology"), ("COST", "Costco", "Consumer Staples"),
-    ("MCD", "McDonald's", "Consumer Discretionary"), ("CRM", "Salesforce", "Information Technology"), 
-    ("AMD", "AMD", "Information Technology"), ("NFLX", "Netflix", "Communication Services"),
-    ("DELL", "Dell Tech", "Information Technology"), ("ANET", "Arista Networks", "Information Technology")
-]
-
-# 캐시 이름 v4.5 매핑
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_us_universe_v4_5():
     try:
@@ -75,7 +52,6 @@ def load_us_universe_v4_5():
             x = x.copy()
             sym_col = "Symbol" if "Symbol" in x.columns else "Ticker" if "Ticker" in x.columns else x.columns[0]
             name_col = "Security" if "Security" in x.columns else "Name" if "Name" in x.columns else x.columns[1]
-            
             sec_col = "GICS Sector" if "GICS Sector" in x.columns else "Sector" if "Sector" in x.columns else None
             
             x = x.rename(columns={sym_col: "Code", name_col: "Name"})
@@ -92,10 +68,7 @@ def load_us_universe_v4_5():
     except Exception:
         pass
     
-    fallback_df = pd.DataFrame([
-        {"Code": c, "Name": n, "Sector_Mapped": SP500_SECTOR_MAP.get(s, "💡 Growth/Others"), "Marcap": 0, "Volume": 0} 
-        for c, n, s in US_TOP_TICKERS
-    ])
+    fallback_df = pd.DataFrame([{"Code": "AAPL", "Name": "Apple", "Sector_Mapped": "⚡ Technology", "Marcap": 0, "Volume": 0}])
     return fallback_df, True
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -183,7 +156,7 @@ def outlook(df):
     return label, f"Avg Score {a:.1f}, Avg 3M {r3:.1f}%, Avg 1M {r1:.1f}%, HOT ratio {hot:.1f}%, Positive 3M ratio {pos:.1f}%"
 
 st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.5</h1>", unsafe_allow_html=True)
-st.caption("🔥 Sector Auto-Mapping Fixed · 50:50 Dynamic Color Scale Active")
+st.caption("🔥 Color Scale Bug Fixed (True Min-Max Relative Mapping)")
 
 if "portfolio_data_us" not in st.session_state:
     st.session_state.portfolio_data_us = pd.DataFrame([
@@ -287,16 +260,17 @@ if st.session_state.get("analysis_complete_us"):
         x["Prospect"] = pd.to_numeric(x["Score"], errors="coerce").clip(0, 100)
         x["Prospect Size"] = (x["Prospect"] + 1) ** 2
 
-        # [필수 픽스] 스케일을 화면에 렌더링된 종목들의 중간값을 기준으로 좌우 완벽히 분배 (빨강/파랑 50:50 유지)
-        median_score = x["Prospect"].median()
-        max_diff = max(x["Prospect"].max() - median_score, median_score - x["Prospect"].min())
-        if max_diff == 0: max_diff = 1 
-        dynamic_range = [median_score - max_diff, median_score + max_diff]
+        # 🚨🚨 컬러 스케일 완벽 수정 (오류 원천 차단) 🚨🚨
+        min_val = float(x["Prospect"].min())
+        max_val = float(x["Prospect"].max())
         
+        if min_val == max_val:
+            min_val, max_val = 0, 100
+
         fig = px.treemap(
             x, path=["Sector", "Display Name"], values="Prospect Size", color="Prospect",
             color_continuous_scale=COLOR_SCALE, 
-            range_color=dynamic_range, 
+            range_color=[min_val, max_val],
             custom_data=["Prospect", "3M Return", "1M Return", "Action"]
         )
         fig.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0), coloraxis_showscale=True)
@@ -305,7 +279,7 @@ if st.session_state.get("analysis_complete_us"):
             hovertemplate="<b>%{label}</b><br>Score: %{customdata[0]}<br>3M Return: %{customdata[1]:.1f}%<br>%{customdata[3]}<extra></extra>"
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"📌 Base Median Score: {median_score:.1f} pts (Top 50% is Red, Bottom 50% is Blue)")
+        st.caption(f"📌 Map Scale: The lowest score on map ({min_val:.0f}) is Blue, highest ({max_val:.0f}) is Red.")
         
         st.divider()
         st.markdown("### 🖱️ Stock Quick View")
@@ -319,7 +293,7 @@ if st.session_state.get("analysis_complete_us"):
     
     with t2:
         s = df.groupby("Sector").agg(Avg_Score=("Score","mean"), Avg_3M=("3M Return","mean")).reset_index().sort_values("Avg_Score", ascending=False)
-        fig = px.bar(s.sort_values("Avg_Score"), x="Avg_Score", y="Sector", orientation="h", text="Avg_Score", color="Avg_Score", color_continuous_scale=COLOR_SCALE, range_color=dynamic_range)
+        fig = px.bar(s.sort_values("Avg_Score"), x="Avg_Score", y="Sector", orientation="h", text="Avg_Score", color="Avg_Score", color_continuous_scale=COLOR_SCALE, range_color=[min_val, max_val])
         fig.update_traces(texttemplate='%{text:.1f}')
         fig.update_layout(height=500, coloraxis_showscale=False); st.plotly_chart(fig, use_container_width=True)
     
