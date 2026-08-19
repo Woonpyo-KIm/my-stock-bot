@@ -6,7 +6,7 @@ import plotly.express as px
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import FinanceDataReader as fdr
 
-st.set_page_config(page_title="AI Market Map PRO v3.2", page_icon="🗺️", layout="wide")
+st.set_page_config(page_title="AI Market Map PRO v4.1", page_icon="🗺️", layout="wide")
 
 # [v3.2] 명확한 파랑-회색-빨강 컬러 스케일 정의 (50점 기준 중립)
 COLOR_SCALE = [
