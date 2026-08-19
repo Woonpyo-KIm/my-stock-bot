@@ -166,7 +166,8 @@ st.caption("입력값 영구 보존(수정 증발 방지) · 자동 50:50 컬러
 
 with st.sidebar:
     st.header("⚙️ 분석 설정")
-    n=st.slider("분석 종목 수",20,50,30,5)
+    # [v4.2 업데이트] 최대 분석 종목 수를 100개로 확장 (기본값 50개)
+    n=st.slider("분석 종목 수", 20, 100, 50, 10)
     workers=st.slider("동시 요청 수",2,8,5)
     cap=st.number_input("최소 시가총액(조원)",0.0,100.0,1.0,1.0)
     if st.button("🔄 캐시 초기화",use_container_width=True):
