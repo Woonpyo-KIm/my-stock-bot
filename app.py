@@ -2,22 +2,22 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
-import datetime
 import FinanceDataReader as fdr
 import xml.etree.ElementTree as ET
 
 # -------------------------------------------------------------------
-# [1] 웹페이지 디자인 및 테마
+# [1] 웹페이지 디자인 및 테마 설정
 # -------------------------------------------------------------------
-st.set_page_config(page_title="AI 퀀트 (장기성장형)", page_icon="📈", layout="centered")
+st.set_page_config(page_title="AI 로보어드바이저", page_icon="💎", layout="centered")
 
+# 고급스러운 UI를 위한 커스텀 CSS 주입
 st.markdown("""
 <style>
     .main-title {
         font-size: 2.2rem;
         font-weight: 800;
         text-align: center;
-        background: linear-gradient(45deg, #11998e, #38ef7d);
+        background: linear-gradient(45deg, #2b5876, #4e4376);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 0px;
@@ -29,224 +29,183 @@ st.markdown("""
         font-size: 1rem;
         margin-bottom: 2rem;
     }
+    div[data-testid="stExpander"] {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        border: none;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# [2] 백엔드 로직 (5년 장기 빅데이터 분석)
+# [2] 백엔드 로직 (기존과 동일하여 속도와 안정성 유지)
 # -------------------------------------------------------------------
 @st.cache_data(ttl=3600)
-def load_universe():
-    # KRX 전체 상장사 중 시가총액 1.5조 이상의 초대형/우량주만 선별
-    df_krx = fdr.StockListing('KRX')
-    blue_chips = df_krx[df_krx['Marcap'] >= 1500000000000].sort_values(by='Marcap', ascending=False)
+def load_market_data():
+    df_kospi = fdr.StockListing('KOSPI')
+    df_kosdaq = fdr.StockListing('KOSDAQ')
     
-    # [개선 1] 서버 부하 및 타임아웃 방지를 위해 최상위 5개로 축소 (기존 20개)
-    candidates = blue_chips.head(5)
-    return candidates, df_krx
+    kospi_cand = df_kospi[df_kospi['Marcap'] >= 1000000000000].sort_values(by='Volume', ascending=False).head(8)
+    kosdaq_cand = df_kosdaq[df_kosdaq['Marcap'] >= 500000000000].sort_values(by='Volume', ascending=False).head(8)
+    all_cand = pd.concat([kospi_cand, kosdaq_cand])
+    return all_cand, pd.concat([df_kospi, df_kosdaq]), df_kospi
 
-def get_5y_growth_data(stock_code):
-    end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(days=365 * 5)
-    
-    try:
-        df = fdr.DataReader(stock_code, start_date, end_date)
-        if df.empty or len(df) < 250: # 상장된 지 1년 미만이거나 데이터 부재 시
-            return 0.0, 0.0
-            
-        current_price = df['Close'].iloc[-1]
-        
-        # 5년 전 가격 (상장한지 5년이 안되었다면 가장 오래된 가격)
-        price_5y_ago = df['Close'].iloc[0]
-        return_5y = ((current_price / price_5y_ago) - 1) * 100
-        
-        # 1년 전 가격 (최근 1년 단기 모멘텀 확인용)
-        one_year_ago_date = pd.to_datetime(end_date - datetime.timedelta(days=365))
-        df_1y = df.loc[df.index >= one_year_ago_date]
-        if not df_1y.empty:
-            price_1y_ago = df_1y['Close'].iloc[0]
-            return_1y = ((current_price / price_1y_ago) - 1) * 100
-        else:
-            return_1y = return_5y
-            
-        return round(return_5y, 2), round(return_1y, 2)
-    except Exception:
-        return 0.0, 0.0
-
-def get_robust_news(stock_name, limit=3):
+def get_robust_news(stock_name, stock_code, limit=3):
     news_list = []
-    # [개선 2] 차단 방지용 User-Agent 헤더 추가 및 타임아웃 5초로 여유있게 변경
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
     try:
-        url = f"https://news.google.com/rss/search?q={stock_name}+주식+전망+성장&hl=ko&gl=KR&ceid=KR:ko"
-        res = requests.get(url, headers=headers, timeout=5)
+        code_str = str(stock_code).zfill(6)
+        url = f"https://m.stock.naver.com/api/news/stock/{code_str}?pageSize={limit}&page=1"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=2)
         if res.status_code == 200:
-            root = ET.fromstring(res.text)
-            for item in root.findall('.//item/title'):
-                news_list.append(item.text.replace(' - Yahoo Finance', '').replace(' - Naver', '').strip())
-                if len(news_list) >= limit: break
-    except Exception:
-        pass
-        
-    if not news_list: 
-        news_list = ["최신 뉴스 수집 불가"]
-    while len(news_list) < limit: 
-        news_list.append("-")
+            data = res.json()
+            if isinstance(data, list) and len(data) > 0:
+                news_list = [item.get('tit', '제목 없음').strip() for item in data][:limit]
+    except: pass
+
+    if not news_list:
+        try:
+            url = f"https://news.google.com/rss/search?q={stock_name}+주식&hl=ko&gl=KR&ceid=KR:ko"
+            res = requests.get(url, timeout=2)
+            if res.status_code == 200:
+                root = ET.fromstring(res.text)
+                for item in root.findall('.//item/title'):
+                    news_list.append(item.text.replace(' - Yahoo Finance', '').replace(' - Naver', '').strip())
+                    if len(news_list) >= limit: break
+        except: pass
+
+    if not news_list: news_list = ["최신 뉴스 수집 불가"]
+    while len(news_list) < limit: news_list.append("-")
     return news_list[:limit]
 
-# 장기 성장/구조적 변화 키워드
-POSITIVE_KEYWORDS = ['성장', '전망', '투자', '혁신', '미래', '확대', '수혜', '주도', '인프라', '독점', '흑자전환']
-NEGATIVE_KEYWORDS = ['침체', '둔화', '위기', '감소', '축소', '악화', '경고', '리스크']
+POSITIVE_KEYWORDS = ['수주', '흑자', '급등', '상승', '최고', '유망', '계약', '실적', 'MOU', '서프라이즈', '돌파', '인수', '성장', '호재', '반도체', '장비', '로봇', '조선']
+NEGATIVE_KEYWORDS = ['적자', '하락', '급락', '우려', '손실', '소송', '악재', '유상증자', '횡령', '조사', '경고', '하향']
 
-def evaluate_growth_stock(return_5y, return_1y, news_list):
+def evaluate_and_trigger(change_ratio, volume, news_list):
     score = 50
     reasons = []
     is_triggered = False
 
-    # 5년 장기 추세 평가
-    if return_5y > 100: score += 20; reasons.append(f"5년 폭풍성장(+{return_5y}%)")
-    elif return_5y > 30: score += 10; reasons.append(f"5년 우상향(+{return_5y}%)")
-    elif return_5y < 0: score -= 15; reasons.append("장기 하락추세")
+    if change_ratio > 3: score += 15; reasons.append(f"상승세(+{change_ratio:.2f}%)")
+    elif change_ratio > 0: score += 5; reasons.append(f"소폭 상승")
+    elif change_ratio < -3: score -= 15; reasons.append(f"하락세")
 
-    # 1년 단기 모멘텀
-    if return_1y > 20: score += 10; reasons.append(f"1년 추세 강세(+{return_1y}%)")
-    elif return_1y < -10: score -= 5; reasons.append("최근 1년 부진")
-
-    # 뉴스 평가
     pos_cnt = sum(1 for news in news_list if any(p in news for p in POSITIVE_KEYWORDS))
     neg_cnt = sum(1 for news in news_list if any(n in news for n in NEGATIVE_KEYWORDS))
 
-    if pos_cnt > 0: score += (pos_cnt * 10); reasons.append(f"미래성장 호재 {pos_cnt}건")
-    if neg_cnt > 0: score -= (neg_cnt * 10); reasons.append(f"업황 리스크 {neg_cnt}건")
+    if pos_cnt > 0: score += (pos_cnt * 10); reasons.append(f"호재 {pos_cnt}건")
+    if neg_cnt > 0: score -= (neg_cnt * 10); reasons.append(f"주의 {neg_cnt}건")
 
-    # 메가 트렌드 트리거
-    if return_5y > 30 and return_1y > 10 and pos_cnt > 0:
-        score += 10
-        is_triggered = True
-        reasons.append("🚀 [향후 1년 유망 주도주]")
+    if change_ratio >= 2.0 and volume >= 500000:
+        score += 15; reasons.append("🚀 스프링보드")
+        if pos_cnt >= 1:
+            is_triggered = True
+            reasons.append("🔥 강력 매수")
 
-    return max(0, min(100, score)), "🔥 메가트렌드" if is_triggered else "관망", ", ".join(reasons)
+    return max(0, min(100, score)), "⚡ 활성" if is_triggered else "대기", ", ".join(reasons)
 
 # -------------------------------------------------------------------
 # [3] 프론트엔드 (화면 구성)
 # -------------------------------------------------------------------
-st.markdown('<p class="main-title">AI 향후 1년 주도섹터 발굴기</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">과거 5년치 데이터를 분석하여 구조적으로 성장할 메가트렌드 기업을 찾습니다</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">AI 퀀트 어드바이저</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">시장의 주도주와 내 포트폴리오를 스마트하게 분석하세요</p>', unsafe_allow_html=True)
 
-# [개선 3] 입력 중 화면 재실행 방지를 위한 st.form 적용
-with st.form("portfolio_form"):
-    st.markdown("#### 💼 내 포트폴리오 장기 전망 진단")
+# 카드 스타일의 입력창 컨테이너
+with st.container(border=True):
+    st.markdown("#### 💼 분석할 포트폴리오 입력")
     user_input = st.text_input(
-        "분석할 보유 종목을 쉼표(,)로 입력하세요.", 
+        "종목명을 쉼표(,)로 구분하여 입력해 주세요.", 
         value="두산로보틱스, 한화오션, 테스, 에스에이엠티"
     )
-    submit_btn = st.form_submit_button("🚀 5년 빅데이터 분석 가동", use_container_width=True, type="primary")
 
-if submit_btn:
-    with st.spinner("과거 5년치 시장 데이터 수집 및 분석 중... (약 5~10초 소요)"):
-        candidates, df_krx = load_universe()
+if st.button("🚀 실시간 AI 분석 시작", use_container_width=True, type="primary"):
+    
+    with st.spinner("빅데이터 분석 엔진 가동 중..."):
+        all_cand, df_all, df_kospi = load_market_data()
         eval_results = []
         progress_bar = st.progress(0)
         
-        # 1. 시장 추천주 평가 (Top 5 우량주)
-        total_candidates = len(candidates)
-        for idx, row in enumerate(candidates.iterrows()):
+        # 1. 시장 추천주 평가
+        for idx, row in enumerate(all_cand.iterrows()):
             _, r = row
-            code, name, sector = r['Code'], r['Name'], str(r['Sector'])
-            if sector == "nan" or not sector: sector = "대형 우량주"
-                
-            return_5y, return_1y = get_5y_growth_data(code)
-            news_list = get_robust_news(name)
-            score, trigger, summary = evaluate_growth_stock(return_5y, return_1y, news_list)
+            code, name, change, volume = r['Code'], r['Name'], round(r['ChagesRatio'], 2), r['Volume']
+            news_list = get_robust_news(name, code)
+            score, trigger, summary = evaluate_and_trigger(change, volume, news_list)
             
             eval_results.append({
-                '종목명': name, '섹터': sector, '종합점수': score, 
-                '신호': trigger, '5년성장': return_5y, '1년추세': return_1y,
-                '최신뉴스': news_list[0], '상세평가': summary
+                '종목명': name, '종합점수': score, 
+                '신호': trigger, '최신뉴스': news_list[0], '상세평가': summary
             })
-            
-            # [개선 4] 진행률 바 범위 100% 넘지 않도록 제한
-            p_val = min(50, int((idx + 1) / total_candidates * 50))
-            progress_bar.progress(p_val)
+            progress_bar.progress(int((idx + 1) / len(all_cand) * 50))
+            time.sleep(0.05)
             
         result_df = pd.DataFrame(eval_results).sort_values(by='종합점수', ascending=False)
         top_pick = result_df.iloc[0]
-        top_pick_name, top_pick_score, top_sector = top_pick['종목명'], top_pick['종합점수'], top_pick['섹터']
+        top_pick_name, top_pick_score = top_pick['종목명'], top_pick['종합점수']
 
-        # 2. 내 포트폴리오 분석
-        my_portfolio = [stock.strip() for stock in user_input.split(',') if stock.strip()]
+        # 2. 내 종목 분석
+        my_portfolio = [stock.strip() for stock in user_input.split(',')]
         my_results = []
-        total_my = len(my_portfolio)
         
         for idx, my_stock in enumerate(my_portfolio):
-            stock_info = df_krx[df_krx['Name'] == my_stock]
+            stock_info = df_all[df_all['Name'] == my_stock]
             if stock_info.empty:
                 my_results.append({"종목명": my_stock, "점수": 0, "상태": "데이터 없음", "액션": "종목명 확인 필요", "알림": "error"})
                 continue
                 
             r = stock_info.iloc[0]
-            code, sector = r['Code'], str(r['Sector'])
-            if sector == "nan" or not sector: sector = "개별주"
-                
-            return_5y, return_1y = get_5y_growth_data(code)
-            news_list = get_robust_news(my_stock)
-            my_score, trigger, summary = evaluate_growth_stock(return_5y, return_1y, news_list)
+            code, change, volume = r['Code'], round(r['ChagesRatio'], 2), r['Volume']
+            news_list = get_robust_news(my_stock, code)
+            my_score, trigger, summary = evaluate_and_trigger(change, volume, news_list)
             
             score_diff = top_pick_score - my_score
             
-            if score_diff >= 20: action, msg_type = f"🚨 향후 1년 유망 섹터({top_sector}) 편입 검토", "warning"
-            elif score_diff > 0: action, msg_type = "🛡️ 추세 관망 (유지)", "info"
-            else: action, msg_type = "👑 강력 보유 (메가트렌드 주도주)", "success"
+            if score_diff >= 20: action, msg_type = f"🚨 {top_pick_name} 교체 권장", "warning"
+            elif score_diff > 0: action, msg_type = "🛡️ 보유 유지 권장", "info"
+            else: action, msg_type = "👑 강력 보유", "success"
                 
             my_results.append({
-                "종목명": my_stock, "섹터": sector, "점수": my_score, "신호": trigger, 
-                "5년성장": return_5y, "1년추세": return_1y, "요약": summary, 
-                "액션": action, "알림": msg_type, "뉴스": news_list[0]
+                "종목명": my_stock, "점수": my_score, "신호": trigger, 
+                "요약": summary, "액션": action, "알림": msg_type, "뉴스": news_list[0]
             })
-            
-            p_val = min(100, 50 + int((idx + 1) / max(1, total_my) * 50))
-            progress_bar.progress(p_val)
+            progress_bar.progress(50 + int((idx + 1) / len(my_portfolio) * 50))
             
         progress_bar.empty()
 
     # -------------------------------------------------------------------
-    # [4] 결과 출력 화면
+    # [4] 결과 출력 (탭을 활용한 깔끔한 UI 분리)
     # -------------------------------------------------------------------
-    tab1, tab2 = st.tabs(["🚀 향후 1년 유망 섹터 & 대장주", "💼 내 포트폴리오 장기 전망"])
+    tab1, tab2 = st.tabs(["🏆 시장 1등 추천주", "💼 포트폴리오 진단"])
     
     with tab1:
-        st.markdown("### 🏆 AI가 포착한 구조적 성장 섹터")
+        st.markdown("### 오늘의 주도주 픽")
         with st.container(border=True):
-            st.markdown(f"#### 주도 섹터: **{top_sector}**")
-            col1, col2, col3 = st.columns([2, 1, 1])
-            col1.metric("Top Pick 대장주", top_pick_name)
-            col2.metric("과거 5년 누적성장률", f"{top_pick['5년성장']}%")
-            col3.metric("성장 전망 점수", f"{top_pick_score} 점", top_pick['신호'])
+            col1, col2 = st.columns([1, 1])
+            col1.metric("종목명", top_pick_name)
+            col2.metric("AI 종합점수", f"{top_pick_score} 점", f"트리거: {top_pick['신호']}")
             
             st.markdown("---")
-            st.markdown(f"**📰 성장 모멘텀 뉴스:** {top_pick['최신뉴스']}")
-            st.markdown(f"**💡 AI 진단 요약:** {top_pick['상세평가']}")
+            st.markdown(f"**📰 핵심 뉴스:** {top_pick['최신뉴스']}")
+            st.markdown(f"**💡 평가 요약:** {top_pick['상세평가']}")
         
-        with st.expander("📊 향후 1년 장기투자 유망 후보군 전체 보기"):
-            display_df = result_df[['섹터', '종목명', '종합점수', '5년성장', '상세평가']].copy()
-            st.dataframe(display_df, hide_index=True)
+        with st.expander("📊 시장 추천주 Top 5 전체 보기"):
+            st.dataframe(result_df[['종목명', '종합점수', '신호', '상세평가']], hide_index=True)
 
     with tab2:
-        st.markdown("### 내 종목의 과거 5년과 미래 1년 진단")
+        st.markdown("### 내 종목 리밸런싱 결과")
         for res in my_results:
             if res["알림"] == "error":
-                st.error(f"❌ {res['종목명']}: 데이터를 찾을 수 없습니다.")
+                st.error(f"❌ {res['종목명']}: 데이터를 찾을 수 없습니다. 오타를 확인해 주세요.")
             else:
+                # 카드형 UI 적용
                 with st.container(border=True):
-                    col_a, col_b, col_c = st.columns([2, 1, 1])
+                    col_a, col_b = st.columns([2, 1])
                     with col_a:
-                        st.markdown(f"#### {res['종목명']} ({res['섹터']})")
+                        st.markdown(f"#### {res['종목명']}")
                         st.caption(res['뉴스'])
                     with col_b:
-                        st.write(f"**5년 성장률:** {res['5년성장']}%")
-                        st.write(f"**1년 모멘텀:** {res['1년추세']}%")
-                    with col_c:
-                        st.metric("전망 점수", f"{res['점수']} 점", res['신호'], delta_color="off")
+                        st.metric("현재 점수", f"{res['점수']} 점", res['신호'], delta_color="off")
                     
                     if res["알림"] == "warning": st.warning(f"**Action:** {res['액션']}")
                     elif res["알림"] == "info": st.info(f"**Action:** {res['액션']}")
