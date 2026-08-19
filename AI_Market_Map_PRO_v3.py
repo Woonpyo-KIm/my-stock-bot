@@ -160,8 +160,8 @@ def outlook(df):
     label="🟢 강한 상승 국면" if p>=4 else "🟢 완만한 상승 국면" if p>=2 else "🔴 강한 약세 국면" if p<=-4 else "🟠 약세/방어 국면" if p<=-2 else "🟡 중립/혼조 국면"
     return label,f"평균점수 {a:.1f}, 평균 3개월 {r3:.1f}%, 평균 1개월 {r1:.1f}%, HOT 비중 {hot:.1f}%, 3개월 상승종목 비중 {pos:.1f}%를 종합한 기술적 판단입니다."
 
-st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v3</h1>",unsafe_allow_html=True)
-st.caption("KRX 장애 대응 · 빠른 종목분석 · 보유손익 · 매수/보유/추가매수/매도 의견 · 시장전망")
+st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v3.1</h1>",unsafe_allow_html=True)
+st.caption("KRX 장애 대응 · 빠른 종목분석 · 유망도 기반 시장맵 · 보유손익 · 매수/보유/추가매수/매도 의견 · 시장전망")
 
 with st.sidebar:
     st.header("⚙️ 분석 설정")
@@ -220,12 +220,45 @@ if st.session_state.get("analysis_complete"):
     a,b,c,d,e=st.columns(5);a.metric("종목",top.종목명);b.metric("섹터",top.섹터);c.metric("점수",f"{top.점수}점");d.metric("3개월",f"{top['3개월수익률']:.1f}%");e.metric("판단",top.판단)
     t1,t2,t3,t4,t5=st.tabs(["🗺️ 시장맵","🔥 섹터","💼 포트폴리오","🔍 상세","🏆 순위"])
     with t1:
-        x=df.copy();x["시장"]="KOSPI/KOSDAQ";x["표시명"]=x.apply(lambda r:"📌 "+r.종목명 if r.보유종목 else r.종목명,axis=1)
-        if x.시가총액.sum()<=0:x["시가총액"]=1
-        fig=px.treemap(x,path=["시장","섹터","표시명"],values="시가총액",color="점수",color_continuous_scale=["#0b486b","#cccccc","#ff0000"],range_color=[30,90])
-        fig.update_layout(height=700,margin=dict(t=10,l=10,r=10,b=10));fig.update_traces(textinfo="label")
+        # [v3.1] 시장맵의 박스 크기를 시가총액이 아니라 유망도(투자점수)로 표시
+        x=df.copy()
+        x["시장"]="KOSPI/KOSDAQ"
+        x["표시명"]=x.apply(
+            lambda r:"📌 "+r.종목명 if r.보유종목 else r.종목명, axis=1
+        )
+        x["유망도"]=pd.to_numeric(x["점수"],errors="coerce").clip(0,100)
+        # 점수 차이가 박스 크기에서 더 잘 보이도록 제곱 스케일 적용
+        x["유망도크기"]=(x["유망도"]+1)**2
+
+        fig=px.treemap(
+            x,
+            path=["시장","섹터","표시명"],
+            values="유망도크기",
+            color="유망도",
+            color_continuous_scale=["#0b486b","#cccccc","#ff0000"],
+            range_color=[0,100],
+            custom_data=["유망도","3개월수익률","1개월수익률","판단"]
+        )
+        fig.update_layout(
+            height=700,
+            margin=dict(t=10,l=10,r=10,b=10),
+            coloraxis_showscale=False
+        )
+        fig.update_traces(
+            textinfo="label",
+            hovertemplate=(
+                "<b>%{label}</b><br>"
+                "유망도: %{customdata[0]}점<br>"
+                "3개월 수익률: %{customdata[1]:.1f}%<br>"
+                "1개월 수익률: %{customdata[2]:.1f}%<br>"
+                "%{customdata[3]}<extra></extra>"
+            )
+        )
         st.plotly_chart(fig,use_container_width=True)
-        if st.session_state.fallback_mode:st.caption("※ fallback 모드에서는 Treemap 크기가 실시간 시총이 아닌 상대 가중치입니다.")
+        st.caption(
+            "📌 박스 크기 = 유망도(투자점수) · 색상 = 유망도 · "
+            "시가총액은 더 이상 시장맵 크기에 영향을 주지 않습니다."
+        )
     with t2:
         s=df.groupby("섹터").agg(평균점수=("점수","mean"),평균1개월=("1개월수익률","mean"),평균3개월=("3개월수익률","mean"),평균1년=("1년수익률","mean"),종목수=("종목명","count")).reset_index().sort_values("평균점수",ascending=False)
         fig=px.bar(s.sort_values("평균점수"),x="평균점수",y="섹터",orientation="h",text="평균점수",color="평균점수",color_continuous_scale=["#0b486b","#ccc","#f00"]);fig.update_layout(height=600,coloraxis_showscale=False);st.plotly_chart(fig,use_container_width=True);st.dataframe(s.round(1),use_container_width=True,hide_index=True)
