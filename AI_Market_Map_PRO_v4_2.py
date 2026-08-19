@@ -168,7 +168,6 @@ with st.sidebar:
     st.header("⚙️ 분석 설정")
     st.markdown("**🔍 기술적 랭킹 스크리닝**")
     
-    # [v4.2 랭킹 도입] 1차로 넓게 풀(Pool)을 잡고, 그 중 점수가 가장 높은 N개만 최종 표시
     pool_size = st.slider("1차 탐색 후보군 수 (시총 상위)", 50, 300, 150, 50, help="백그라운드에서 분석할 대상입니다. 클수록 시간이 더 소요됩니다.")
     n = st.slider("최종 분석 표시 종목 (점수 상위)", 20, 100, 50, 10, help="탐색 후보군 중에서 기술적 점수가 가장 높은 알짜 종목만 화면에 표시합니다.")
     
@@ -210,13 +209,11 @@ if run:
     if fallback:
         st.warning("⚠️ KRX 종목목록 조회 실패로 내장 핵심 종목 Universe를 사용합니다.")
             
-    # [랭킹 로직 1단계] 지정한 pool_size 만큼 시총 상위 종목을 긁어옵니다.
     c = u[pd.to_numeric(u.Marcap, errors="coerce").fillna(0) >= cap*1e12].head(pool_size)
     jobs = {}
     for _, r in c.iterrows():
         jobs[str(r.Code).zfill(6)] = (str(r.Name), float(r.Marcap or 0), float(r.Volume or 0))
         
-    # 포트폴리오 종목도 무조건 분석 풀(Pool)에 포함시킵니다.
     for p in ps:
         code, m, v = resolve(p["종목명"], u)
         if code: jobs[code] = (p["종목명"], m, v)
@@ -232,7 +229,6 @@ if run:
     
     if df.empty: st.error("가격 데이터를 불러오지 못했습니다."); st.stop()
     
-    # 포트폴리오 수익률 계산 및 마킹
     p_rows = []
     for p in ps:
         code, _, _ = resolve(p["종목명"], u)
@@ -251,12 +247,9 @@ if run:
         
     df["보유종목"] = df.종목명.isin([r["종목명"] for r in p_rows])
     
-    # [랭킹 로직 2단계] 점수(Score) 기준으로 줄을 세워 최상위 n개만 필터링합니다.
-    # 단, 사용자의 포트폴리오 보유 종목은 점수와 상관없이 화면에 무조건 표시하도록 합칩니다.
     df_others = df[~df["보유종목"]].sort_values(["점수", "3개월수익률"], ascending=False).head(n)
     df_port = df[df["보유종목"]]
     
-    # 최종 데이터프레임 병합 및 재정렬
     df = pd.concat([df_port, df_others]).sort_values(["점수", "3개월수익률"], ascending=False).reset_index(drop=True)
     
     st.session_state.update(market_results=df, portfolio_results=pd.DataFrame(p_rows), analysis_complete=True, fallback_mode=fallback)
@@ -304,6 +297,10 @@ if st.session_state.get("analysis_complete"):
     with t2:
         s = df.groupby("섹터").agg(평균점수=("점수","mean"), 평균1개월=("1개월수익률","mean"), 평균3개월=("3개월수익률","mean"), 평균1년=("1년수익률","mean"), 종목수=("종목명","count")).reset_index().sort_values("평균점수", ascending=False)
         fig = px.bar(s.sort_values("평균점수"), x="평균점수", y="섹터", orientation="h", text="평균점수", color="평균점수", color_continuous_scale=COLOR_SCALE, range_color=dynamic_range)
+        
+        # [수정] Bar 차트의 text 값을 소수점 1자리로 강제 지정
+        fig.update_traces(texttemplate='%{text:.1f}')
+        
         fig.update_layout(height=600, coloraxis_showscale=False); st.plotly_chart(fig, use_container_width=True); st.dataframe(s.round(1), use_container_width=True, hide_index=True)
     
     with t3:
