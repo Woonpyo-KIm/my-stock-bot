@@ -6,14 +6,19 @@ import plotly.express as px
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import FinanceDataReader as fdr
 
-# 화면 제목이 v4.5로 바뀌었는지 꼭 확인해주세요!
+# 화면 제목 v4.5 지정
 st.set_page_config(page_title="AI Market Map PRO v4.5", page_icon="🗺️", layout="wide")
 
+# ==========================================
+# 📱 모바일 최적화 커스텀 CSS
+# ==========================================
 st.markdown("""
 <style>
 @media (max-width: 768px) {
     .block-container { padding: 1rem 0.5rem !important; }
     h1 { font-size: 1.5rem !important; }
+    h2 { font-size: 1.3rem !important; }
+    h3 { font-size: 1.1rem !important; }
     [data-testid="stMetricValue"] { font-size: 1.3rem !important; word-break: break-word !important; }
     [data-testid="stMetricLabel"] { font-size: 0.85rem !important; }
 }
@@ -28,21 +33,40 @@ COLOR_SCALE = [
     [1.0,  "#dc2626"]   
 ]
 
-# 미국 주식 섹터 초강력 하드코딩 (이 목록에 있으면 무조건 이 섹터로 들어갑니다)
-SECTORS = {
-    "⚡ Technology": ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CSCO", "AMD", "QCOM", "TXN", "IBM", "AMAT", "NOW", "INTU", "PLTR", "MU", "LRCX", "ADI", "PANW", "SNPS", "CDNS", "KLAC", "DELL", "ANET", "CRWD", "APH", "SMCI", "FTNT", "MCHP"],
-    "🛒 Consumer Disc.": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "BKNG", "TJX", "LOW", "MAR", "ORLY", "GM", "F", "ABNB", "CMG", "RCL", "LULU", "DPZ"],
-    "🧬 Healthcare": ["LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "PFE", "ABT", "DHR", "ISRG", "AMGN", "ELV", "SYK", "VRTX", "MDT", "CI", "REGN", "ZTS", "BSX", "CVS", "BDX"],
-    "💰 Financials": ["JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "AXP", "C", "BLK", "SPGI", "SCHW", "CB", "MMC", "PGR", "CME", "AON", "ICE"],
-    "📱 Communication": ["GOOGL", "GOOG", "META", "NFLX", "DIS", "CMCSA", "VZ", "T", "TMUS", "EA", "TTWO", "OMC", "CHTR"],
-    "🏗️ Industrials": ["GE", "CAT", "UBER", "BA", "HON", "UNP", "UPS", "LMT", "RTX", "DE", "ADP", "ETN", "WM", "CSX", "NOC", "GD", "PCAR", "EMR"],
-    "🍔 Staples": ["WMT", "PG", "COST", "KO", "PEP", "PM", "TGT", "MO", "CL", "MDLZ", "KHC", "SYY", "EL", "KDP"],
-    "🔋 Energy": ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "PXD", "HES", "HAL", "WMB"],
-    "🏠 Real Estate / Util": ["PLD", "AMT", "EQIX", "NEE", "DUK", "SO", "DLR", "PSA", "AEP", "SRE", "CCI", "O", "WELL"],
-    "🧪 Materials": ["LIN", "SHW", "FCX", "ECL", "NEM", "APD", "NUE", "CTVA", "DOW"]
+# S&P 500 공식 섹터 자동 매핑
+SP500_SECTOR_MAP = {
+    "Information Technology": "⚡ Technology",
+    "Health Care": "🧬 Healthcare",
+    "Financials": "💰 Financials",
+    "Consumer Discretionary": "🛒 Consumer Disc.",
+    "Communication Services": "📱 Communication",
+    "Industrials": "🏗️ Industrials",
+    "Consumer Staples": "🍔 Staples",
+    "Energy": "🔋 Energy",
+    "Real Estate": "🏠 Real Estate / Util",
+    "Utilities": "🏠 Real Estate / Util",
+    "Materials": "🧪 Materials"
 }
 
-# (이름을 v4_5로 바꾸어 기존 꼬인 캐시를 완벽히 무시합니다)
+US_TOP_TICKERS = [
+    ("AAPL", "Apple", "Information Technology"), ("MSFT", "Microsoft", "Information Technology"), 
+    ("NVDA", "NVIDIA", "Information Technology"), ("GOOGL", "Alphabet", "Communication Services"),
+    ("AMZN", "Amazon", "Consumer Discretionary"), ("META", "Meta", "Communication Services"), 
+    ("BRK-B", "Berkshire", "Financials"), ("LLY", "Eli Lilly", "Health Care"),
+    ("TSLA", "Tesla", "Consumer Discretionary"), ("V", "Visa", "Financials"), 
+    ("JPM", "JPMorgan", "Financials"), ("UNH", "UnitedHealth", "Health Care"),
+    ("WMT", "Walmart", "Consumer Staples"), ("MA", "Mastercard", "Financials"), 
+    ("JNJ", "Johnson & Johnson", "Health Care"), ("PG", "P&G", "Consumer Staples"),
+    ("HD", "Home Depot", "Consumer Discretionary"), ("ORCL", "Oracle", "Information Technology"), 
+    ("CVX", "Chevron", "Energy"), ("MRK", "Merck", "Health Care"),
+    ("KO", "Coca-Cola", "Consumer Staples"), ("PEP", "PepsiCo", "Consumer Staples"), 
+    ("AVGO", "Broadcom", "Information Technology"), ("COST", "Costco", "Consumer Staples"),
+    ("MCD", "McDonald's", "Consumer Discretionary"), ("CRM", "Salesforce", "Information Technology"), 
+    ("AMD", "AMD", "Information Technology"), ("NFLX", "Netflix", "Communication Services"),
+    ("DELL", "Dell Tech", "Information Technology"), ("ANET", "Arista Networks", "Information Technology")
+]
+
+# 캐시 이름 v4.5 매핑
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_us_universe_v4_5():
     try:
@@ -51,7 +75,15 @@ def load_us_universe_v4_5():
             x = x.copy()
             sym_col = "Symbol" if "Symbol" in x.columns else "Ticker" if "Ticker" in x.columns else x.columns[0]
             name_col = "Security" if "Security" in x.columns else "Name" if "Name" in x.columns else x.columns[1]
+            
+            sec_col = "GICS Sector" if "GICS Sector" in x.columns else "Sector" if "Sector" in x.columns else None
+            
             x = x.rename(columns={sym_col: "Code", name_col: "Name"})
+            if sec_col and sec_col in x.columns:
+                x["Sector_Mapped"] = x[sec_col].map(SP500_SECTOR_MAP).fillna("💡 Growth/Others")
+            else:
+                x["Sector_Mapped"] = "💡 Growth/Others"
+                
             x["Code"] = x["Code"].astype(str).str.strip().str.upper()
             x["Name"] = x["Name"].astype(str).str.strip()
             x["Marcap"] = 0
@@ -60,14 +92,12 @@ def load_us_universe_v4_5():
     except Exception:
         pass
     
-    # FDR 실패시 대비
-    fallback_tickers = []
-    for sec, tickers in SECTORS.items():
-        for t in tickers[:5]: fallback_tickers.append((t, t))
-    fallback_df = pd.DataFrame([{"Code": c, "Name": n, "Marcap": 0, "Volume": 0} for c, n in fallback_tickers])
+    fallback_df = pd.DataFrame([
+        {"Code": c, "Name": n, "Sector_Mapped": SP500_SECTOR_MAP.get(s, "💡 Growth/Others"), "Marcap": 0, "Volume": 0} 
+        for c, n, s in US_TOP_TICKERS
+    ])
     return fallback_df, True
 
-# (캐시 우회용 이름 변경)
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_price_v4_5(ticker):
     try:
@@ -77,21 +107,14 @@ def get_price_v4_5(ticker):
         x = x.copy(); x.index = pd.to_datetime(x.index); return x.sort_index()
     except Exception: return pd.DataFrame()
 
-def get_sector_safe(ticker):
-    ticker = str(ticker).upper()
-    for s, ks in SECTORS.items():
-        if ticker in ks: return s
-    return "💡 Growth/Others"
-
 def ret(close, days):
     if close.empty: return 0.0
     p = close[close.index <= close.index[-1] - pd.Timedelta(days=days)]
     if p.empty: return 0.0
     return (close.iloc[-1] / p.iloc[-1] - 1) * 100 if p.iloc[-1] > 0 else 0.0
 
-def analyze(ticker, name, marcap=0, volume=0):
+def analyze(ticker, name, sector_name="💡 Growth/Others", marcap=0, volume=0):
     ticker = str(ticker).upper()
-    sector_name = get_sector_safe(ticker)  # 확실한 매핑 로직 적용
     x = get_price_v4_5(ticker)
     
     base = {"Ticker": ticker, "Company": name, "Sector": sector_name, "Chart": x.tail(100)}
@@ -122,7 +145,11 @@ def analyze(ticker, name, marcap=0, volume=0):
     
     action = "🟢 Strong Buy" if score >= 82 and r3 > 5 else "🟢 Buy/Hold" if score >= 72 else "🟡 Watch" if score >= 62 else "🟠 Trim" if score >= 48 else "🔴 Sell"
     
-    return {**base, "Current Price": cur, "1Y Return": round(r1, 2), "3M Return": round(r3, 2), "1M Return": round(r1m, 2), "Trend Score": int(trend), "Score": score, "Action": action, "Est. Market Price": est_market_price, "Max Drawdown": round(dd, 2)}
+    return {
+        **base, "Current Price": cur, "1Y Return": round(r1, 2), "3M Return": round(r3, 2), 
+        "1M Return": round(r1m, 2), "Trend Score": int(trend), "Score": score, 
+        "Action": action, "Est. Market Price": est_market_price, "Max Drawdown": round(dd, 2)
+    }
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def news(ticker, limit=5):
@@ -141,6 +168,13 @@ def news(ticker, limit=5):
     except Exception: pass
     return out or ["Failed to fetch recent news."]
 
+def resolve_v4_5(ticker, u):
+    ticker = str(ticker).strip().upper()
+    m = u[u.Code == ticker]
+    if not m.empty:
+        r = m.iloc[0]; return ticker, r["Name"], str(r.get("Sector_Mapped", "💡 Growth/Others"))
+    return ticker, ticker, "💡 Growth/Others"
+
 def outlook(df):
     a = df["Score"].mean(); r3 = df["3M Return"].mean(); r1 = df["1M Return"].mean()
     hot = (df["Score"] >= 75).mean() * 100; pos = (df["3M Return"] > 0).mean() * 100
@@ -149,7 +183,7 @@ def outlook(df):
     return label, f"Avg Score {a:.1f}, Avg 3M {r3:.1f}%, Avg 1M {r1:.1f}%, HOT ratio {hot:.1f}%, Positive 3M ratio {pos:.1f}%"
 
 st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.5</h1>", unsafe_allow_html=True)
-st.caption("🔥 Force Cache Clear Applied · Sector Mapping Fixed · True Color Scale Active")
+st.caption("🔥 Sector Auto-Mapping Fixed · 50:50 Dynamic Color Scale Active")
 
 if "portfolio_data_us" not in st.session_state:
     st.session_state.portfolio_data_us = pd.DataFrame([
@@ -184,10 +218,11 @@ if run:
     jobs = {}
     
     for _, r in c.iterrows():
-        jobs[r.Code] = (r.Name, 0, 0)
+        jobs[r.Code] = (r["Name"], r.get("Sector_Mapped", "💡 Growth/Others"), 0, 0)
     for p in ps:
         t = str(p["Ticker"]).upper()
-        jobs[t] = (t, 0, 0)
+        code, name, sec = resolve_v4_5(t, u)
+        jobs[t] = (name, sec, 0, 0)
         
     results = []; bar = st.progress(0)
     with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -252,16 +287,16 @@ if st.session_state.get("analysis_complete_us"):
         x["Prospect"] = pd.to_numeric(x["Score"], errors="coerce").clip(0, 100)
         x["Prospect Size"] = (x["Prospect"] + 1) ** 2
 
-        # [최종 픽스] 스케일을 현재 화면에 출력된 1등과 꼴등 점수로 강제 매핑합니다.
-        min_score = float(x["Prospect"].min())
-        max_score = float(x["Prospect"].max())
-        if min_score == max_score:
-            min_score, max_score = 0, 100
+        # [필수 픽스] 스케일을 화면에 렌더링된 종목들의 중간값을 기준으로 좌우 완벽히 분배 (빨강/파랑 50:50 유지)
+        median_score = x["Prospect"].median()
+        max_diff = max(x["Prospect"].max() - median_score, median_score - x["Prospect"].min())
+        if max_diff == 0: max_diff = 1 
+        dynamic_range = [median_score - max_diff, median_score + max_diff]
         
         fig = px.treemap(
             x, path=["Sector", "Display Name"], values="Prospect Size", color="Prospect",
             color_continuous_scale=COLOR_SCALE, 
-            range_color=[min_score, max_score], 
+            range_color=dynamic_range, 
             custom_data=["Prospect", "3M Return", "1M Return", "Action"]
         )
         fig.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0), coloraxis_showscale=True)
@@ -270,7 +305,7 @@ if st.session_state.get("analysis_complete_us"):
             hovertemplate="<b>%{label}</b><br>Score: %{customdata[0]}<br>3M Return: %{customdata[1]:.1f}%<br>%{customdata[3]}<extra></extra>"
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"📌 Relative Color Mapping: Lowest Score ({min_score:.0f} pts) is Blue, Highest Score ({max_score:.0f} pts) is Red.")
+        st.caption(f"📌 Base Median Score: {median_score:.1f} pts (Top 50% is Red, Bottom 50% is Blue)")
         
         st.divider()
         st.markdown("### 🖱️ Stock Quick View")
@@ -284,7 +319,7 @@ if st.session_state.get("analysis_complete_us"):
     
     with t2:
         s = df.groupby("Sector").agg(Avg_Score=("Score","mean"), Avg_3M=("3M Return","mean")).reset_index().sort_values("Avg_Score", ascending=False)
-        fig = px.bar(s.sort_values("Avg_Score"), x="Avg_Score", y="Sector", orientation="h", text="Avg_Score", color="Avg_Score", color_continuous_scale=COLOR_SCALE, range_color=[min_score, max_score])
+        fig = px.bar(s.sort_values("Avg_Score"), x="Avg_Score", y="Sector", orientation="h", text="Avg_Score", color="Avg_Score", color_continuous_scale=COLOR_SCALE, range_color=dynamic_range)
         fig.update_traces(texttemplate='%{text:.1f}')
         fig.update_layout(height=500, coloraxis_showscale=False); st.plotly_chart(fig, use_container_width=True)
     
