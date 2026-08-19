@@ -8,13 +8,12 @@ import FinanceDataReader as fdr
 
 st.set_page_config(page_title="AI Market Map PRO v4.2", page_icon="🗺️", layout="wide")
 
-# [v4.2] 동적 스케일링을 위한 기본 컬러맵 (중앙이 무조건 회색이 되도록 설계)
 COLOR_SCALE = [
-    [0.0,  "#1e3a8a"],  # 최하위 점수: 짙은 파랑
-    [0.25, "#60a5fa"],  # 중하위 점수: 연한 파랑
-    [0.50, "#e2e8f0"],  # 중앙값(Median): 회색 (상위 50%와 하위 50%를 가르는 기준)
-    [0.75, "#f87171"],  # 중상위 점수: 연한 빨강
-    [1.0,  "#dc2626"]   # 최상위 점수: 짙은 빨강
+    [0.0,  "#1e3a8a"],  
+    [0.25, "#60a5fa"],  
+    [0.50, "#e2e8f0"],  
+    [0.75, "#f87171"],  
+    [1.0,  "#dc2626"]   
 ]
 
 SECTORS={
@@ -114,7 +113,6 @@ def analyze(code,name,marcap=0,volume=0):
     vol=float(c.pct_change().tail(60).std()*np.sqrt(252)*100)
     dd=float((c/c.cummax()-1).min()*100)
     
-    # [v4.2] 다른 투자자들의 평균 매수가 추정치 (60일 이동평균선 사용)
     est_market_price = float(ma60) if pd.notna(ma60) else cur
     
     score=50
@@ -163,8 +161,8 @@ def outlook(df):
     label="🟢 강한 상승 국면" if p>=4 else "🟢 완만한 상승 국면" if p>=2 else "🔴 강한 약세 국면" if p<=-4 else "🟠 약세/방어 국면" if p<=-2 else "🟡 중립/혼조 국면"
     return label,f"평균점수 {a:.1f}, 평균 3개월 {r3:.1f}%, 평균 1개월 {r1:.1f}%, HOT 비중 {hot:.1f}%, 3개월 상승종목 비중 {pos:.1f}%를 종합한 기술적 판단입니다."
 
-st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.2</h1>",unsafe_allow_html=True)
-st.caption("자동 50:50 컬러 스케일 · 시장추정단가 비교 · 대화형 포트폴리오 관리")
+st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.3</h1>",unsafe_allow_html=True)
+st.caption("입력값 영구 보존(수정 증발 방지) · 자동 50:50 컬러 스케일 · 시장추정단가 비교")
 
 with st.sidebar:
     st.header("⚙️ 분석 설정")
@@ -186,16 +184,20 @@ with st.form("portfolio_form"):
     st.markdown("### 💼 내 포트폴리오 입력")
     st.caption("표 안의 셀을 클릭해 수정하세요. 새로운 종목은 맨 아래 빈 줄에 추가할 수 있습니다.")
     
+    # [v4.3] 데이터 유지 핵심: key="portfolio_editor_ui" 할당
+    # 이를 통해 사용자가 탭이나 사이드바를 만지더라도 입력 중이던 데이터가 메모리에서 증발하지 않습니다.
     edited_df = st.data_editor(
         st.session_state.portfolio_data,
         num_rows="dynamic",
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        key="portfolio_editor_ui"
     )
     
     run = st.form_submit_button("🗺️ PRO 시장 분석 시작", use_container_width=True, type="primary")
 
 if run:
+    # 분석 시작 버튼을 누르면 그 시점의 데이터로 원본 데이터를 최신화합니다.
     st.session_state.portfolio_data = edited_df.copy()
     ps = edited_df.dropna(subset=["종목명"]).to_dict(orient="records")
     ps = [p for p in ps if str(p.get("종목명", "")).strip() != ""]
@@ -263,16 +265,15 @@ if st.session_state.get("analysis_complete"):
         x["유망도"]=pd.to_numeric(x["점수"],errors="coerce").clip(0,100)
         x["유망도크기"]=(x["유망도"]+1)**2
 
-        # [v4.2] 현재 불러온 데이터의 중간값을 계산하여 50:50 컬러 스케일 범위 자동 설정
         median_score = x["유망도"].median()
         max_diff = max(x["유망도"].max() - median_score, median_score - x["유망도"].min())
-        if max_diff == 0: max_diff = 1 # 오류 방지
+        if max_diff == 0: max_diff = 1 
         dynamic_range = [median_score - max_diff, median_score + max_diff]
 
         fig=px.treemap(
             x, path=["시장","섹터","표시명"], values="유망도크기", color="유망도",
             color_continuous_scale=COLOR_SCALE, 
-            range_color=dynamic_range, # 동적 범위 적용
+            range_color=dynamic_range, 
             custom_data=["유망도","3개월수익률","1개월수익률","판단"]
         )
         fig.update_layout(height=700, margin=dict(t=10,l=10,r=10,b=10), coloraxis_showscale=True)
@@ -297,7 +298,6 @@ if st.session_state.get("analysis_complete"):
         else:
             ev=pf.평가금액.sum();cost=pf.매입금액.sum();pnl=ev-cost
             a,b,c,d=st.columns(4);a.metric("평가금액",f"{ev:,.0f}원");b.metric("매입금액",f"{cost:,.0f}원");c.metric("평가손익",f"{pnl:,.0f}원");d.metric("총수익률",f"{(ev/cost-1)*100:.2f}%" if cost>0 else "-")
-            # [v4.2] '시장추정단가' 열 추가
             cols=["종목명","현재가","수량","평균매수가","시장추정단가","평가금액","평가손익","수익률","점수","판단","3개월수익률"]
             st.dataframe(pf[cols].round(2),use_container_width=True,hide_index=True)
             st.caption("※ **시장추정단가**: 최근 60일(약 3개월) 이동평균선 가격입니다. 내 '평균매수가'와 비교하여 현재 시장 평균 참여자 대비 저점/고점 매수 여부를 가늠해 볼 수 있습니다.")
