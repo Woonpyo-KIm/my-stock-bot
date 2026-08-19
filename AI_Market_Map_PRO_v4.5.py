@@ -6,7 +6,6 @@ import plotly.express as px
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import FinanceDataReader as fdr
 
-# 버전 4.5로 고정
 st.set_page_config(page_title="AI Market Map PRO v4.5", page_icon="🗺️", layout="wide")
 
 st.markdown("""
@@ -22,12 +21,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# 0을 중앙(회색)으로 두는 대칭 컬러 스케일
 COLOR_SCALE = [
-    [0.0,  "#1e3a8a"],  
+    [0.0,  "#1e3a8a"],  # 파랑 (하락)
     [0.25, "#60a5fa"],  
-    [0.50, "#e2e8f0"],  
+    [0.50, "#e2e8f0"],  # 보합 (0%)
     [0.75, "#f87171"],  
-    [1.0,  "#dc2626"]   
+    [1.0,  "#dc2626"]   # 빨강 (상승)
 ]
 
 SP500_SECTOR_MAP = {
@@ -156,7 +156,7 @@ def outlook(df):
     return label, f"Avg Score {a:.1f}, Avg 3M {r3:.1f}%, Avg 1M {r1:.1f}%, HOT ratio {hot:.1f}%, Positive 3M ratio {pos:.1f}%"
 
 st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.5</h1>", unsafe_allow_html=True)
-st.caption("🔥 Color Scale Bug Fixed (True Min-Max Relative Mapping)")
+st.caption("🔥 True Heatmap Engine Applied (Size=Score, Color=1M Return)")
 
 if "portfolio_data_us" not in st.session_state:
     st.session_state.portfolio_data_us = pd.DataFrame([
@@ -177,7 +177,7 @@ with st.sidebar:
 
     st.divider()
     st.header("⚙️ Analysis Settings")
-    pool_size = st.slider("Initial Scan Pool (S&P 500 Caps)", 50, 300, 150, 50)
+    pool_size = st.slider("Initial Scan Pool (S&P 500 Caps)", 50, 300, 250, 50)
     n = st.slider("Final Displayed Stocks (Top Score)", 20, 100, 50, 10)
     workers = st.slider("Concurrent Requests (Speed)", 2, 8, 5)
 
@@ -257,29 +257,28 @@ if st.session_state.get("analysis_complete_us"):
     with t1:
         x = df.copy()
         x["Display Name"] = x.apply(lambda r: "📌 " + r.Ticker if r.Owned else r.Ticker, axis=1)
-        x["Prospect"] = pd.to_numeric(x["Score"], errors="coerce").clip(0, 100)
-        x["Prospect Size"] = (x["Prospect"] + 1) ** 2
-
-        # 🚨🚨 컬러 스케일 완벽 수정 (오류 원천 차단) 🚨🚨
-        min_val = float(x["Prospect"].min())
-        max_val = float(x["Prospect"].max())
         
-        if min_val == max_val:
-            min_val, max_val = 0, 100
+        # 박스 크기는 Score 기준
+        x["Prospect Size"] = (pd.to_numeric(x["Score"], errors="coerce").clip(0, 100) + 1) ** 2
 
+        # 🚨🚨 [진짜 프로의 해결책] 색상은 '1개월 수익률(1M Return)'을 기준으로! 🚨🚨
+        # 0%를 완벽히 정중앙(회색)으로 잡기 위해 최고/최저 수익률 중 큰 절댓값을 찾아 양끝으로 대칭 설정합니다.
+        max_abs_ret = max(abs(x["1M Return"].min()), abs(x["1M Return"].max()))
+        if max_abs_ret == 0: max_abs_ret = 1.0
+        
         fig = px.treemap(
-            x, path=["Sector", "Display Name"], values="Prospect Size", color="Prospect",
+            x, path=["Sector", "Display Name"], values="Prospect Size", color="1M Return", # Score가 아닌 실제 수익률로 컬러 매핑
             color_continuous_scale=COLOR_SCALE, 
-            range_color=[min_val, max_val],
-            custom_data=["Prospect", "3M Return", "1M Return", "Action"]
+            range_color=[-max_abs_ret, max_abs_ret], # 0을 정확히 회색으로 고정
+            custom_data=["Score", "3M Return", "1M Return", "Action"]
         )
         fig.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0), coloraxis_showscale=True)
         fig.update_traces(
             textinfo="label",
-            hovertemplate="<b>%{label}</b><br>Score: %{customdata[0]}<br>3M Return: %{customdata[1]:.1f}%<br>%{customdata[3]}<extra></extra>"
+            hovertemplate="<b>%{label}</b><br>Score: %{customdata[0]}<br>1M Return: %{customdata[2]:.1f}%<br>%{customdata[3]}<extra></extra>"
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"📌 Map Scale: The lowest score on map ({min_val:.0f}) is Blue, highest ({max_val:.0f}) is Red.")
+        st.caption(f"📌 Map Logic: Size = Score / Color = 1M Return (0% is Gray, -{max_abs_ret:.1f}% is Blue, +{max_abs_ret:.1f}% is Red)")
         
         st.divider()
         st.markdown("### 🖱️ Stock Quick View")
@@ -292,8 +291,9 @@ if st.session_state.get("analysis_complete_us"):
             for i, z in enumerate(news(sel_quick, 3), 1): st.markdown(f"- {z}")
     
     with t2:
-        s = df.groupby("Sector").agg(Avg_Score=("Score","mean"), Avg_3M=("3M Return","mean")).reset_index().sort_values("Avg_Score", ascending=False)
-        fig = px.bar(s.sort_values("Avg_Score"), x="Avg_Score", y="Sector", orientation="h", text="Avg_Score", color="Avg_Score", color_continuous_scale=COLOR_SCALE, range_color=[min_val, max_val])
+        s = df.groupby("Sector").agg(Avg_Score=("Score","mean"), Avg_1M=("1M Return","mean")).reset_index().sort_values("Avg_Score", ascending=False)
+        # 섹터 탭의 색상도 수익률 기준으로 대칭 정렬
+        fig = px.bar(s.sort_values("Avg_Score"), x="Avg_Score", y="Sector", orientation="h", text="Avg_Score", color="Avg_1M", color_continuous_scale=COLOR_SCALE, range_color=[-max_abs_ret, max_abs_ret])
         fig.update_traces(texttemplate='%{text:.1f}')
         fig.update_layout(height=500, coloraxis_showscale=False); st.plotly_chart(fig, use_container_width=True)
     
