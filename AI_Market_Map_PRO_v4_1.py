@@ -6,16 +6,7 @@ import plotly.express as px
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import FinanceDataReader as fdr
 
-st.set_page_config(page_title="AI Market Map PRO v4.1", page_icon="🗺️", layout="wide")
-
-# [v3.2] 명확한 파랑-회색-빨강 컬러 스케일 정의 (50점 기준 중립)
-COLOR_SCALE = [
-    [0.0,  "#1e3a8a"],  # 0점: 짙은 파랑 (강한 약세/매도)
-    [0.40, "#60a5fa"],  # 40점: 연한 파랑 (약세)
-    [0.50, "#e2e8f0"],  # 50점: 중성 회색 (중립)
-    [0.70, "#f87171"],  # 70점: 연한 빨강 (관망/보유)
-    [1.0,  "#dc2626"]   # 100점: 짙은 빨강 (강한 유망/적극매수)
-]
+st.set_page_config(page_title="AI Market Map PRO v3", page_icon="🗺️", layout="wide")
 
 SECTORS={
 "⚡ AI/반도체":["삼성전자","SK하이닉스","한미반도체","테스","에스에이엠티","DB하이텍","리노공업","이오테크닉스","HPSP","원익IPS","반도체"],
@@ -144,7 +135,6 @@ def news(name,limit=5):
     return out or ["최근 관련 뉴스를 불러오지 못했습니다."]
 
 NAME_TO_CODE={n:c for c,n,_ in FALLBACK}
-
 def parse_portfolio(text):
     out=[]
     for z in str(text).split(","):
@@ -170,8 +160,8 @@ def outlook(df):
     label="🟢 강한 상승 국면" if p>=4 else "🟢 완만한 상승 국면" if p>=2 else "🔴 강한 약세 국면" if p<=-4 else "🟠 약세/방어 국면" if p<=-2 else "🟡 중립/혼조 국면"
     return label,f"평균점수 {a:.1f}, 평균 3개월 {r3:.1f}%, 평균 1개월 {r1:.1f}%, HOT 비중 {hot:.1f}%, 3개월 상승종목 비중 {pos:.1f}%를 종합한 기술적 판단입니다."
 
-st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v3.2</h1>",unsafe_allow_html=True)
-st.caption("KRX 장애 대응 · 빠른 종목분석 · 유망도 기반 시장맵 · 보유손익 · 매수/보유/추가매수/매도 의견 · 시장전망")
+st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.1</h1>",unsafe_allow_html=True)
+st.caption("KRX 장애 대응 · 섹터 유망도 · 종목 유망도 · 직관적인 포트폴리오 입력 · 보유손익 · 매수/보유/추가매수/매도 의견 · AI 시장전망")
 
 with st.sidebar:
     st.header("⚙️ 분석 설정")
@@ -181,12 +171,50 @@ with st.sidebar:
     if st.button("🔄 캐시 초기화",use_container_width=True):
         st.cache_data.clear(); st.rerun()
 
-# [v3.2] 입력 중 끊김 현상을 방지하기 위해 st.form으로 포트폴리오 입력 영역 감싸기
-with st.form("portfolio_form"):
-    st.markdown("### 💼 내 포트폴리오")
-    st.caption("형식: 종목명:수량:평균매수가  예) 두산로보틱스:100:50000")
-    portfolio_text=st.text_input("보유종목", value="두산로보틱스:100:50000, 한화오션:50:80000, 테스, 에스에이엠티")
-    run=st.form_submit_button("🗺️ PRO 시장 분석 시작", use_container_width=True, type="primary")
+# ============================================================
+# 💼 직관적인 포트폴리오 입력 테이블
+# ============================================================
+if "portfolio_editor" not in st.session_state:
+    st.session_state["portfolio_editor"] = pd.DataFrame({
+        "종목명": ["두산로보틱스", "한화오션", "테스", "에스에이엠티"],
+        "평균매수가": [0, 0, 0, 0],
+        "보유수량": [0, 0, 0, 0],
+    })
+
+with st.container(border=True):
+    st.markdown("### 💼 내 포트폴리오 입력")
+    st.caption("종목명, 평균매수가, 보유수량만 입력하세요. 현재가는 시장 데이터를 이용해 자동 조회합니다.")
+
+    portfolio_input = st.data_editor(
+        st.session_state["portfolio_editor"],
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        key="portfolio_editor_widget",
+        column_config={
+            "종목명": st.column_config.TextColumn(
+                "📌 종목명",
+                help="예: 두산로보틱스",
+            ),
+            "평균매수가": st.column_config.NumberColumn(
+                "💰 평균매수가(원)",
+                min_value=0,
+                step=100,
+                format="%,.0f원",
+            ),
+            "보유수량": st.column_config.NumberColumn(
+                "📦 보유수량(주)",
+                min_value=0,
+                step=1,
+                format="%,.0f주",
+            ),
+        },
+    )
+    st.session_state["portfolio_editor"] = portfolio_input.copy()
+
+    st.info("💡 행 추가는 표 아래의 **+** 버튼을 누르세요. 빈 종목명은 자동으로 제외됩니다.")
+
+run=st.button("🗺️ PRO 시장 분석 시작",use_container_width=True,type="primary")
 
 if run:
     u,fallback,errs=load_universe()
@@ -195,7 +223,22 @@ if run:
         if errs:
             with st.expander("KRX 오류 상세"): [st.write("-",e) for e in errs]
     c=u[pd.to_numeric(u.Marcap,errors="coerce").fillna(0)>=cap*1e12].head(n)
-    ps=parse_portfolio(portfolio_text); jobs={}
+
+    # 표 입력값을 분석용 포트폴리오 리스트로 변환
+    ps=[]
+    for _, row in portfolio_input.iterrows():
+        name=str(row.get("종목명", "")).strip()
+        if not name or name.lower()=="nan":
+            continue
+        try: qty=float(row.get("보유수량", 0) or 0)
+        except Exception: qty=0
+        try: avg=float(row.get("평균매수가", 0) or 0)
+        except Exception: avg=0
+        if qty < 0: qty=0
+        if avg < 0: avg=0
+        ps.append({"종목명":name,"수량":qty,"평균매수가":avg})
+
+    jobs={}
     for _,r in c.iterrows():jobs[str(r.Code).zfill(6)]=(str(r.Name),float(r.Marcap or 0),float(r.Volume or 0))
     for p in ps:
         code,m,v=resolve(p["종목명"],u)
@@ -231,28 +274,29 @@ if st.session_state.get("analysis_complete"):
     a,b,c,d,e=st.columns(5);a.metric("종목",top.종목명);b.metric("섹터",top.섹터);c.metric("점수",f"{top.점수}점");d.metric("3개월",f"{top['3개월수익률']:.1f}%");e.metric("판단",top.판단)
     t1,t2,t3,t4,t5=st.tabs(["🗺️ 시장맵","🔥 섹터","💼 포트폴리오","🔍 상세","🏆 순위"])
     with t1:
+        # [v3.1] 시장맵의 박스 크기를 시가총액이 아니라 유망도(투자점수)로 표시
         x=df.copy()
         x["시장"]="KOSPI/KOSDAQ"
         x["표시명"]=x.apply(
             lambda r:"📌 "+r.종목명 if r.보유종목 else r.종목명, axis=1
         )
         x["유망도"]=pd.to_numeric(x["점수"],errors="coerce").clip(0,100)
+        # 점수 차이가 박스 크기에서 더 잘 보이도록 제곱 스케일 적용
         x["유망도크기"]=(x["유망도"]+1)**2
 
-        # [v3.2] 파랑-회색-빨강 컬러 스케일 및 range_color 적용
         fig=px.treemap(
             x,
             path=["시장","섹터","표시명"],
             values="유망도크기",
             color="유망도",
-            color_continuous_scale=COLOR_SCALE,
-            range_color=[0, 100],
+            color_continuous_scale=["#0b486b","#cccccc","#ff0000"],
+            range_color=[0,100],
             custom_data=["유망도","3개월수익률","1개월수익률","판단"]
         )
         fig.update_layout(
             height=700,
             margin=dict(t=10,l=10,r=10,b=10),
-            coloraxis_showscale=True  # 색상 범주 스케일 표시
+            coloraxis_showscale=False
         )
         fig.update_traces(
             textinfo="label",
@@ -266,26 +310,159 @@ if st.session_state.get("analysis_complete"):
         )
         st.plotly_chart(fig,use_container_width=True)
         st.caption(
-            "📌 박스 크기 = 유망도(투자점수) · 색상 = 유망도 (파란색: 약세/매도, 회색: 중립, 빨간색: 유망/매수)"
+            "📌 박스 크기 = 유망도(투자점수) · 색상 = 유망도 · "
+            "시가총액은 더 이상 시장맵 크기에 영향을 주지 않습니다."
         )
     with t2:
-        s=df.groupby("섹터").agg(평균점수=("점수","mean"),평균1개월=("1개월수익률","mean"),평균3개월=("3개월수익률","mean"),평균1년=("1년수익률","mean"),종목수=("종목명","count")).reset_index().sort_values("평균점수",ascending=False)
-        # [v3.2] 섹터 차트에도 동일한 파랑-회색-빨강 스케일 적용
-        fig=px.bar(
-            s.sort_values("평균점수"),
-            x="평균점수",
+        st.markdown("### 🔥 섹터 투자지도")
+        st.caption("섹터 자체의 유망도와 섹터 내 종목 유망도를 2단계로 평가합니다.")
+
+        # 섹터별 기초 통계
+        sector_df = (
+            df.groupby("섹터")
+              .agg(
+                  base_score=("점수", "mean"),
+                  avg_3m=("3개월수익률", "mean"),
+                  avg_1m=("1개월수익률", "mean"),
+                  avg_1y=("1년수익률", "mean"),
+                  stock_count=("종목명", "count"),
+                  rising_ratio=("3개월수익률", lambda x: (x > 0).mean() * 100),
+                  high_score_ratio=("점수", lambda x: (x >= 75).mean() * 100),
+              )
+              .reset_index()
+        )
+
+        # 섹터 유망도:
+        # 종목 점수 45% + 3개월 추세 20% + 1개월 추세 15%
+        # + 상승 종목 확산 10% + 고득점 종목 확산 10%
+        sector_df["섹터유망도"] = (
+            sector_df["base_score"] * 0.45
+            + sector_df["avg_3m"].clip(-30, 50).add(30).div(80).mul(100) * 0.20
+            + sector_df["avg_1m"].clip(-20, 30).add(20).div(50).mul(100) * 0.15
+            + sector_df["rising_ratio"] * 0.10
+            + sector_df["high_score_ratio"] * 0.10
+        ).clip(0, 100).round(1)
+
+        def sector_action(v):
+            if v >= 82:
+                return "🟢 최우선 관심"
+            if v >= 72:
+                return "🟢 비중확대 관심"
+            if v >= 62:
+                return "🟡 관망 / 분할접근"
+            if v >= 50:
+                return "🟠 비중축소 검토"
+            return "🔴 회피 / 교체 검토"
+
+        sector_df["의견"] = sector_df["섹터유망도"].apply(sector_action)
+        sector_df = sector_df.sort_values("섹터유망도", ascending=False).reset_index(drop=True)
+
+        best = sector_df.iloc[0]
+        worst = sector_df.iloc[-1]
+
+        a, b, c, d = st.columns(4)
+        a.metric("🥇 최선호 섹터", best["섹터"], f'{best["섹터유망도"]:.1f}점')
+        b.metric("📈 최선호 3개월", f'{best["avg_3m"]:.1f}%')
+        c.metric("⚠️ 최약 섹터", worst["섹터"], f'{worst["섹터유망도"]:.1f}점')
+        d.metric("🔥 고득점 종목 비율", f'{best["high_score_ratio"]:.0f}%')
+
+        # 섹터 투자지도: 박스 크기 = 섹터 유망도
+        sector_plot = sector_df.copy()
+        sector_plot["시장"] = "전체시장"
+        sector_plot["유망도크기"] = (sector_plot["섹터유망도"] + 1) ** 2
+
+        fig_sector = px.treemap(
+            sector_plot,
+            path=["시장", "섹터"],
+            values="유망도크기",
+            color="섹터유망도",
+            color_continuous_scale=["#0b486b", "#cccccc", "#ff0000"],
+            range_color=[0, 100],
+            custom_data=[
+                "섹터유망도", "avg_3m", "avg_1m",
+                "rising_ratio", "high_score_ratio", "의견"
+            ]
+        )
+        fig_sector.update_layout(
+            height=600,
+            margin=dict(t=10, l=10, r=10, b=10),
+            coloraxis_showscale=False
+        )
+        fig_sector.update_traces(
+            textinfo="label",
+            hovertemplate=(
+                "<b>%{label}</b><br>"
+                "섹터 유망도: %{customdata[0]:.1f}점<br>"
+                "평균 3개월: %{customdata[1]:.1f}%<br>"
+                "평균 1개월: %{customdata[2]:.1f}%<br>"
+                "상승 종목 비율: %{customdata[3]:.1f}%<br>"
+                "75점 이상 비율: %{customdata[4]:.1f}%<br>"
+                "%{customdata[5]}<extra></extra>"
+            )
+        )
+        st.plotly_chart(fig_sector, use_container_width=True)
+
+        # 섹터 강도 순위
+        fig_bar = px.bar(
+            sector_df.sort_values("섹터유망도"),
+            x="섹터유망도",
             y="섹터",
             orientation="h",
-            text="평균점수",
-            color="평균점수",
-            color_continuous_scale=COLOR_SCALE,
+            text="섹터유망도",
+            color="섹터유망도",
+            color_continuous_scale=["#0b486b", "#cccccc", "#ff0000"],
             range_color=[0, 100]
         )
-        fig.update_layout(height=600,coloraxis_showscale=False)
-        st.plotly_chart(fig,use_container_width=True)
-        st.dataframe(s.round(1),use_container_width=True,hide_index=True)
+        fig_bar.update_layout(height=650, coloraxis_showscale=False)
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+        st.dataframe(
+            sector_df[
+                [
+                    "섹터", "섹터유망도", "의견",
+                    "avg_3m", "avg_1m", "avg_1y",
+                    "rising_ratio", "high_score_ratio", "stock_count"
+                ]
+            ].rename(
+                columns={
+                    "avg_3m": "평균3개월",
+                    "avg_1m": "평균1개월",
+                    "avg_1y": "평균1년",
+                    "rising_ratio": "상승종목비율",
+                    "high_score_ratio": "75점이상비율",
+                    "stock_count": "종목수",
+                }
+            ).round(1),
+            use_container_width=True,
+            hide_index=True
+        )
+
+        selected_sector = st.selectbox(
+            "🔎 상세 분석할 섹터",
+            sector_df["섹터"].tolist(),
+            index=0
+        )
+
+        sector_stocks = df[df["섹터"] == selected_sector].sort_values(
+            ["점수", "3개월수익률"], ascending=False
+        ).head(10)
+
+        st.markdown(f"#### 🏆 {selected_sector} 내 유망 종목 TOP 10")
+        st.dataframe(
+            sector_stocks[
+                [
+                    "종목명", "점수", "판단", "현재가",
+                    "1개월수익률", "3개월수익률",
+                    "1년수익률", "최대낙폭"
+                ]
+            ].round(2),
+            use_container_width=True,
+            hide_index=True
+        )
     with t3:
-        if pf.empty:st.warning("보유종목이 없습니다.")
+        st.markdown("### 💼 내 포트폴리오 현황")
+        st.caption("위 입력표의 평균매수가·수량을 기준으로 현재가, 평가금액, 손익을 자동 계산합니다.")
+        if pf.empty:st.warning("보유종목이 없습니다. 위 입력표에 종목을 추가하고 분석을 실행하세요.")
         else:
             ev=pf.평가금액.sum();cost=pf.매입금액.sum();pnl=ev-cost
             a,b,c,d=st.columns(4);a.metric("평가금액",f"{ev:,.0f}원");b.metric("매입금액",f"{cost:,.0f}원");c.metric("평가손익",f"{pnl:,.0f}원");d.metric("총수익률",f"{(ev/cost-1)*100:.2f}%" if cost>0 else "-")
@@ -303,4 +480,4 @@ if st.session_state.get("analysis_complete"):
         q=df[cols].copy();q.insert(0,"순위",range(1,len(q)+1));st.dataframe(q,use_container_width=True,hide_index=True)
 else:
     st.info("👆 **PRO 시장 분석 시작**을 누르세요.")
-    st.markdown("### v3.2 핵심 개선\n- **컬러 스케일 정밀화**: 약세(파랑) / 중립(회색) / 강세(빨강) 시각적 대비 극대화\n- **입력 오류 해결**: `st.form` 적용으로 텍스트 입력 시 끊김 현상 완벽 수정\n- **안정성 강화**: KRX 장애 대응 fallback 및 수치 계산 처리 유지\n\n⚠️ 기술적 참고용 분석이며 투자수익을 보장하지 않습니다.")
+    st.markdown("### v3 핵심 개선\n- KRX `StockListing()` 실패 시 KOSPI/KOSDAQ 재시도 후 static fallback\n- 병렬 가격조회 + cache로 실행속도 개선\n- 종목명:수량:평균매수가 입력 및 실제 손익 계산\n- 투자점수와 매수/보유/추가매수/매도 의견\n- 기술지표 기반 시장 국면 전망\n\n⚠️ 기술적 참고용 분석이며 투자수익을 보장하지 않습니다.")
