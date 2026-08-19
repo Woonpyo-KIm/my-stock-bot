@@ -18,49 +18,47 @@ COLOR_SCALE = [
 
 # US Market Sectors mapping by Tickers
 SECTORS = {
-    "⚡ Technology": ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CSCO", "AMD", "QCOM", "TXN", "IBM", "AMAT", "NOW", "INTU", "PLTR"],
-    "🛒 Consumer Discretionary": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "BKNG", "TJX"],
-    "🧬 Healthcare": ["LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "PFE", "ABT", "DHR"],
-    "💰 Financials": ["JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "AXP", "C"],
-    "📱 Communication": ["GOOGL", "GOOG", "META", "NFLX", "DIS", "CMCSA", "VZ", "T", "CHTR"],
-    "🏗️ Industrials": ["GE", "CAT", "UBER", "BA", "HON", "UNP", "UPS", "LMT", "RTX"],
-    "🍔 Consumer Staples": ["WMT", "PG", "COST", "KO", "PEP", "PM", "TGT", "MO"],
-    "🔋 Energy": ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX"],
-    "🏠 Real Estate & Utils": ["PLD", "AMT", "EQIX", "NEE", "DUK", "SO"],
-    "🧪 Materials": ["LIN", "SHW", "FCX", "ECL", "NEM"]
+    "⚡ Technology": ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CSCO", "AMD", "QCOM", "TXN", "IBM", "AMAT", "NOW", "INTU", "PLTR", "MU", "LRCX", "ADI", "PANW", "SNPS", "CDNS", "KLAC"],
+    "🛒 Consumer Discretionary": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "BKNG", "TJX", "LOW", "MAR", "ORLY", "GM", "F", "ABNB"],
+    "🧬 Healthcare": ["LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "PFE", "ABT", "DHR", "ISRG", "AMGN", "ELV", "SYK", "VRTX", "MDT", "CI"],
+    "💰 Financials": ["JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "AXP", "C", "BLK", "SPGI", "SCHW", "CB", "MMC"],
+    "📱 Communication": ["GOOGL", "GOOG", "META", "NFLX", "DIS", "CMCSA", "VZ", "T", "TMUS", "EA"],
+    "🏗️ Industrials": ["GE", "CAT", "UBER", "BA", "HON", "UNP", "UPS", "LMT", "RTX", "DE", "ADP", "ETN", "WM"],
+    "🍔 Consumer Staples": ["WMT", "PG", "COST", "KO", "PEP", "PM", "TGT", "MO", "CL", "MDLZ"],
+    "🔋 Energy": ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY"],
+    "🏠 Real Estate & Utils": ["PLD", "AMT", "EQIX", "NEE", "DUK", "SO", "DLR", "PSA", "AEP"],
+    "🧪 Materials": ["LIN", "SHW", "FCX", "ECL", "NEM", "APD"]
 }
 
-# US Mega-cap universe for scanning pool (Ticker, Company Name, Mock Weight)
+# Fallback Mega-caps (In case S&P 500 listing fails)
 US_TOP_TICKERS = [
-    ("AAPL", "Apple", 3000), ("MSFT", "Microsoft", 3000), ("NVDA", "NVIDIA", 2500),
-    ("GOOGL", "Alphabet", 1500), ("AMZN", "Amazon", 1500), ("META", "Meta", 1000),
-    ("BRK-B", "Berkshire", 800), ("LLY", "Eli Lilly", 700), ("TSLA", "Tesla", 600),
-    ("V", "Visa", 500), ("JPM", "JPMorgan", 500), ("UNH", "UnitedHealth", 450),
-    ("WMT", "Walmart", 450), ("MA", "Mastercard", 400), ("JNJ", "Johnson & Johnson", 400),
-    ("PG", "Procter & Gamble", 400), ("HD", "Home Depot", 350), ("ORCL", "Oracle", 350),
-    ("CVX", "Chevron", 300), ("MRK", "Merck", 300), ("KO", "Coca-Cola", 250),
-    ("PEP", "PepsiCo", 250), ("AVGO", "Broadcom", 600), ("COST", "Costco", 300),
-    ("MCD", "McDonald's", 200), ("CRM", "Salesforce", 250), ("AMD", "AMD", 250),
-    ("NFLX", "Netflix", 250), ("ADBE", "Adobe", 250), ("DIS", "Walt Disney", 200),
-    ("INTC", "Intel", 150), ("BA", "Boeing", 150), ("CSCO", "Cisco", 200),
-    ("QCOM", "Qualcomm", 200), ("TXN", "Texas Inst", 150), ("IBM", "IBM", 150),
-    ("AMAT", "Applied Mat", 100), ("NOW", "ServiceNow", 100), ("INTU", "Intuit", 100),
-    ("UBER", "Uber", 100), ("CAT", "Caterpillar", 100), ("GE", "Gen Electric", 100),
-    ("HON", "Honeywell", 100), ("UNP", "Union Pacific", 100), ("UPS", "UPS", 100),
-    ("LMT", "Lockheed", 100), ("RTX", "RTX Corp", 100), ("XOM", "ExxonMobil", 300),
-    ("COP", "ConocoPhillips", 100), ("SLB", "Schlumberger", 100), ("PLD", "Prologis", 100),
-    ("AMT", "American Tower", 100), ("NEE", "NextEra Energy", 100), ("LIN", "Linde", 100),
-    ("SHW", "Sherwin-Williams", 100), ("FCX", "Freeport", 100),
-    ("NKE", "Nike", 100), ("SBUX", "Starbucks", 100), ("BKNG", "Booking", 100),
-    ("TJX", "TJX Companies", 100), ("ABBV", "AbbVie", 200), ("TMO", "Thermo Fisher", 150),
-    ("PFE", "Pfizer", 150), ("ABT", "Abbott", 150), ("DHR", "Danaher", 150),
-    ("BAC", "Bank of America", 200), ("WFC", "Wells Fargo", 100), ("GS", "Goldman Sachs", 100),
-    ("MS", "Morgan Stanley", 100), ("AXP", "American Express", 100), ("C", "Citigroup", 100),
-    ("CMCSA", "Comcast", 150), ("VZ", "Verizon", 150), ("T", "AT&T", 150)
+    ("AAPL", "Apple"), ("MSFT", "Microsoft"), ("NVDA", "NVIDIA"), ("GOOGL", "Alphabet"),
+    ("AMZN", "Amazon"), ("META", "Meta"), ("BRK-B", "Berkshire"), ("LLY", "Eli Lilly"),
+    ("TSLA", "Tesla"), ("V", "Visa"), ("JPM", "JPMorgan"), ("UNH", "UnitedHealth"),
+    ("WMT", "Walmart"), ("MA", "Mastercard"), ("JNJ", "Johnson & Johnson"), ("PG", "P&G"),
+    ("HD", "Home Depot"), ("ORCL", "Oracle"), ("CVX", "Chevron"), ("MRK", "Merck"),
+    ("KO", "Coca-Cola"), ("PEP", "PepsiCo"), ("AVGO", "Broadcom"), ("COST", "Costco"),
+    ("MCD", "McDonald's"), ("CRM", "Salesforce"), ("AMD", "AMD"), ("NFLX", "Netflix")
 ]
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_us_universe():
-    return pd.DataFrame([{"Code": c, "Name": n, "Marcap": w * 1e9, "Volume": 0} for c, n, w in US_TOP_TICKERS])
+    try:
+        # S&P 500 리스트 조회 (약 500개 종목)
+        x = fdr.StockListing('S&P500')
+        if x is not None and not x.empty:
+            x = x.copy()
+            symbol_col = "Symbol" if "Symbol" in x.columns else "Ticker"
+            name_col = "Name" if "Name" in x.columns else "Symbol"
+            x = x.rename(columns={symbol_col: "Code", name_col: "Name"})
+            x["Code"] = x["Code"].astype(str).str.strip().str.upper()
+            x["Name"] = x["Name"].astype(str).str.strip()
+            x["Marcap"] = 0
+            x["Volume"] = 0
+            return x.drop_duplicates("Code"), False
+    except Exception:
+        pass
+    return pd.DataFrame([{"Code": c, "Name": n, "Marcap": 0, "Volume": 0} for c, n in US_TOP_TICKERS]), True
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_price(ticker):
@@ -134,8 +132,7 @@ def resolve(ticker, u):
     ticker = str(ticker).strip().upper()
     m = u[u.Code == ticker]
     if not m.empty:
-        r = m.iloc[0]; return ticker, r.Name, float(r.Marcap or 0)
-    # Even if not in predefined universe, allow search via fdr.DataReader
+        r = m.iloc[0]; return ticker, r.Name, 0
     return ticker, ticker, 0
 
 def outlook(df):
@@ -145,18 +142,19 @@ def outlook(df):
     label = "🟢 Strong Bull" if p >= 4 else "🟢 Mild Bull" if p >= 2 else "🔴 Strong Bear" if p <= -4 else "🟠 Bear/Defensive" if p <= -2 else "🟡 Neutral/Mixed"
     return label, f"Avg Score {a:.1f}, Avg 3M {r3:.1f}%, Avg 1M {r1:.1f}%, HOT ratio {hot:.1f}%, Positive 3M ratio {pos:.1f}%"
 
-st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.3 (US Edition)</h1>", unsafe_allow_html=True)
-st.caption("🔥 Technical Ranking Screening · Quick View · Auto 50:50 Color Scale · Persistent US Portfolio")
+st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.3 (US 300 Edition)</h1>", unsafe_allow_html=True)
+st.caption("🔥 Technical Ranking Screening · Up to 300 S&P 500 Stocks · Quick View · Auto 50:50 Color Scale")
 
 with st.sidebar:
     st.header("⚙️ Analysis Settings")
     st.markdown("**🔍 Technical Ranking Screening**")
     
-    pool_size = st.slider("Initial Scan Pool (Top US Caps)", 20, len(US_TOP_TICKERS), 70, 10)
-    n = st.slider("Final Displayed Stocks (Top Score)", 10, len(US_TOP_TICKERS), 30, 5)
+    # 300개 종목까지 슬라이더 확장
+    pool_size = st.slider("Initial Scan Pool (S&P 500 Universe)", 50, 300, 150, 50, help="Higher values scan more US stocks, but take longer.")
+    n = st.slider("Final Displayed Stocks (Top Score)", 20, 100, 50, 10, help="Selects the highest scoring stocks from the scanned pool.")
     
     st.divider()
-    workers = st.slider("Concurrent Requests", 2, 8, 5)
+    workers = st.slider("Concurrent Requests (Speed)", 2, 8, 5)
     
     if st.button("🔄 Clear Cache", use_container_width=True):
         st.cache_data.clear(); st.rerun()
@@ -188,12 +186,14 @@ if run:
     ps = edited_df.dropna(subset=["Ticker"]).to_dict(orient="records")
     ps = [p for p in ps if str(p.get("Ticker", "")).strip() != ""]
 
-    u = load_us_universe()
+    u, fallback = load_us_universe()
+    if fallback:
+        st.warning("⚠️ S&P 500 listing failed. Falling back to core US mega-caps.")
             
     c = u.head(pool_size)
     jobs = {}
     for _, r in c.iterrows():
-        jobs[r.Code] = (r.Name, float(r.Marcap), float(r.Volume))
+        jobs[r.Code] = (r.Name, 0, 0)
         
     for p in ps:
         code, name, m = resolve(p["Ticker"], u)
@@ -317,7 +317,6 @@ if st.session_state.get("analysis_complete_us"):
             a, b, c, d = st.columns(4); a.metric("Total Valuation", f"$ {ev:,.2f}"); b.metric("Total Cost", f"$ {cost:,.2f}"); c.metric("Total PnL", f"$ {pnl:,.2f}"); d.metric("Total Return", f"{(ev/cost-1)*100:.2f}%" if cost>0 else "-")
             cols = ["Ticker", "Company", "Quantity", "Avg Price", "Est. Market Price", "Valuation", "Total PnL", "Total Return", "Score", "Action", "3M Return"]
             
-            # Formatting to USD Style
             pf_display = pf[cols].copy()
             for col in ["Avg Price", "Est. Market Price", "Valuation", "Total PnL"]:
                 pf_display[col] = pf_display[col].apply(lambda x: f"$ {x:,.2f}")
