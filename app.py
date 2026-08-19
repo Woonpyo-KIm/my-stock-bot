@@ -1,11 +1,11 @@
-import streamlit as st
-import pandas as pd
-import requests
 import datetime
-import FinanceDataReader as fdr
 import xml.etree.ElementTree as ET
-import plotly.express as px
+import FinanceDataReader as fdr
 import numpy as np
+import pandas as pd
+import plotly.express as px
+import requests
+import streamlit as st
 
 # ============================================================
 # 0. 기본 설정
@@ -64,52 +64,118 @@ st.markdown(
 
 SECTORS = {
     "⚡ AI/반도체": [
-        "삼성전자", "SK하이닉스", "한미반도체", "테스", "에스에이엠티",
-        "DB하이텍", "리노공업", "이오테크닉스", "HPSP", "원익IPS", "반도체",
+        "삼성전자",
+        "SK하이닉스",
+        "한미반도체",
+        "테스",
+        "에스에이엠티",
+        "DB하이텍",
+        "리노공업",
+        "이오테크닉스",
+        "HPSP",
+        "원익IPS",
+        "반도체",
     ],
     "🤖 로봇/자동화": [
-        "두산로보틱스", "레인보우로보틱스", "로보티즈", "뉴로메카",
-        "에스피지", "로봇", "자동화",
+        "두산로보틱스",
+        "레인보우로보틱스",
+        "로보티즈",
+        "뉴로메카",
+        "에스피지",
+        "로봇",
+        "자동화",
     ],
     "🚢 조선/방산": [
-        "한화오션", "HD현대중공업", "HD한국조선해양", "삼성중공업",
-        "한화에어로스페이스", "한국항공우주", "LIG넥스원", "현대로템",
-        "조선", "방산",
+        "한화오션",
+        "HD현대중공업",
+        "HD한국조선해양",
+        "삼성중공업",
+        "한화에어로스페이스",
+        "한국항공우주",
+        "LIG넥스원",
+        "현대로템",
+        "조선",
+        "방산",
     ],
     "🧬 바이오/제약": [
-        "삼성바이오로직스", "셀트리온", "유한양행", "알테오젠",
-        "HLB", "바이오", "제약",
+        "삼성바이오로직스",
+        "셀트리온",
+        "유한양행",
+        "알테오젠",
+        "HLB",
+        "바이오",
+        "제약",
     ],
     "🚗 자동차/부품": [
-        "현대차", "기아", "현대모비스", "HL만도", "한온시스템", "자동차",
+        "현대차",
+        "기아",
+        "현대모비스",
+        "HL만도",
+        "한온시스템",
+        "자동차",
     ],
     "💰 금융/지주": [
-        "KB금융", "신한지주", "하나금융지주", "우리금융지주",
-        "메리츠금융지주", "BNK금융지주", "금융", "은행",
+        "KB금융",
+        "신한지주",
+        "하나금융지주",
+        "우리금융지주",
+        "메리츠금융지주",
+        "BNK금융지주",
+        "금융",
+        "은행",
     ],
     "🔋 2차전지": [
-        "LG에너지솔루션", "삼성SDI", "SK이노베이션", "POSCO홀딩스",
-        "포스코퓨처엠", "에코프로", "에코프로비엠", "배터리", "2차전지",
+        "LG에너지솔루션",
+        "삼성SDI",
+        "SK이노베이션",
+        "POSCO홀딩스",
+        "포스코퓨처엠",
+        "에코프로",
+        "에코프로비엠",
+        "배터리",
+        "2차전지",
     ],
-    "📱 통신/네트워크": [
-        "SK텔레콤", "KT", "LG유플러스", "통신",
-    ],
+    "📱 통신/네트워크": ["SK텔레콤", "KT", "LG유플러스", "통신"],
     "🎬 엔터/게임": [
-        "하이브", "에스엠", "JYP", "YG", "엔씨소프트",
-        "카카오게임즈", "넷마블", "게임", "엔터",
+        "하이브",
+        "에스엠",
+        "JYP",
+        "YG",
+        "엔씨소프트",
+        "카카오게임즈",
+        "넷마블",
+        "게임",
+        "엔터",
     ],
     "🛒 유통/소비재": [
-        "이마트", "신세계", "롯데쇼핑", "아모레퍼시픽",
-        "LG생활건강", "화장품", "유통",
+        "이마트",
+        "신세계",
+        "롯데쇼핑",
+        "아모레퍼시픽",
+        "LG생활건강",
+        "화장품",
+        "유통",
     ],
     "🏗️ 건설/부동산": [
-        "현대건설", "GS건설", "대우건설", "DL이앤씨", "건설", "부동산",
+        "현대건설",
+        "GS건설",
+        "대우건설",
+        "DL이앤씨",
+        "건설",
+        "부동산",
     ],
     "🧪 철강/화학": [
-        "POSCO홀딩스", "포스코인터내셔널", "LG화학", "롯데케미칼",
-        "금호석유", "S-Oil", "철강", "화학",
+        "POSCO홀딩스",
+        "포스코인터내셔널",
+        "LG화학",
+        "롯데케미칼",
+        "금호석유",
+        "S-Oil",
+        "철강",
+        "화학",
     ],
 }
+
 
 def classify_sector(stock_name: str) -> str:
     """종목명을 기준으로 섹터를 분류합니다."""
@@ -119,9 +185,11 @@ def classify_sector(stock_name: str) -> str:
             return sector
     return "기타"
 
+
 # ============================================================
 # 4. KRX 종목 Universe
 # ============================================================
+
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_universe():
@@ -144,9 +212,11 @@ def load_universe():
     candidates = df[df["Marcap"] >= 1_000_000_000_000].head(100).copy()
     return candidates, df
 
+
 # ============================================================
 # 5. 가격 데이터
 # ============================================================
+
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_price_data(stock_code: str) -> pd.DataFrame:
@@ -159,15 +229,17 @@ def get_price_data(stock_code: str) -> pd.DataFrame:
             return pd.DataFrame()
 
         df = df.copy()
-        df.index = pd.to_datetime(df.index)
+        df.index = pd.to_datetime(df.index).tz_localize(None)
         df = df.sort_index()
         return df
     except Exception:
         return pd.DataFrame()
 
+
 # ============================================================
 # 6. 분석 유틸리티
 # ============================================================
+
 
 def empty_result(stock_code, stock_name, marcap=0, volume=0):
     return {
@@ -186,6 +258,7 @@ def empty_result(stock_code, stock_name, marcap=0, volume=0):
         "점수": 0,
         "차트": pd.DataFrame(),
     }
+
 
 def analyze_stock(stock_code, stock_name, marcap=0, volume=0):
     df = get_price_data(stock_code)
@@ -227,12 +300,19 @@ def analyze_stock(stock_code, stock_name, marcap=0, volume=0):
     daily_return = close.pct_change().dropna()
     volatility = (
         float(daily_return.tail(60).std()) * np.sqrt(252) * 100
-        if len(daily_return) >= 2 else 0.0
+        if len(daily_return) >= 2
+        else 0.0
     )
 
     ma20 = float(close.rolling(20).mean().iloc[-1])
-    ma60 = float(close.rolling(60).mean().iloc[-1]) if len(close) >= 60 else ma20
-    ma120 = float(close.rolling(120).mean().iloc[-1]) if len(close) >= 120 else ma60
+    ma60 = (
+        float(close.rolling(60).mean().iloc[-1]) if len(close) >= 60 else ma20
+    )
+    ma120 = (
+        float(close.rolling(120).mean().iloc[-1])
+        if len(close) >= 120
+        else ma60
+    )
 
     trend_score = 0
     if current > ma20:
@@ -305,9 +385,11 @@ def analyze_stock(stock_code, stock_name, marcap=0, volume=0):
         "차트": df.tail(70),
     }
 
+
 # ============================================================
 # 7. 뉴스
 # ============================================================
+
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_news(stock_name, limit=5):
@@ -333,8 +415,7 @@ def get_news(stock_name, limit=5):
             title = item.find("title")
             if title is not None and title.text:
                 text = (
-                    title.text
-                    .replace(" - Yahoo Finance", "")
+                    title.text.replace(" - Yahoo Finance", "")
                     .replace(" - Naver", "")
                     .strip()
                 )
@@ -349,9 +430,11 @@ def get_news(stock_name, limit=5):
 
     return news[:limit] if news else ["최근 관련 뉴스가 없습니다."]
 
+
 # ============================================================
 # 8. 신호 판정
 # ============================================================
+
 
 def investment_signal(score):
     if score >= 85:
@@ -363,6 +446,7 @@ def investment_signal(score):
     if score >= 45:
         return "🟠 관망"
     return "🔴 주의"
+
 
 # ============================================================
 # 9. 사이드바
@@ -439,7 +523,9 @@ if run_analysis:
         )
 
         if filtered_candidates.empty:
-            st.error("조건에 맞는 종목이 없습니다. 최소 시가총액을 낮춰보세요.")
+            st.error(
+                "조건에 맞는 종목이 없습니다. 최소 시가총액을 낮춰보세요."
+            )
             st.stop()
 
         results = []
@@ -460,9 +546,7 @@ if run_analysis:
 
         progress.empty()
 
-        my_stocks = [
-            x.strip() for x in user_input.split(",") if x.strip()
-        ]
+        my_stocks = [x.strip() for x in user_input.split(",") if x.strip()]
 
         portfolio_results = []
         normalized_names = krx["Name"].astype(str).str.strip()
@@ -478,9 +562,7 @@ if run_analysis:
             marcap = float(row["Marcap"])
             volume = row.get("Volume", 0)
 
-            result = analyze_stock(
-                code, stock_name, marcap, volume
-            )
+            result = analyze_stock(code, stock_name, marcap, volume)
             result["보유종목"] = True
             portfolio_results.append(result)
 
@@ -500,9 +582,8 @@ if run_analysis:
             st.error("분석 결과가 없습니다.")
             st.stop()
 
-        result_df = (
-            result_df.sort_values("점수", ascending=False)
-            .reset_index(drop=True)
+        result_df = result_df.sort_values("점수", ascending=False).reset_index(
+            drop=True
         )
 
         st.session_state["market_results"] = result_df
@@ -556,8 +637,7 @@ if st.session_state.get("analysis_complete", False):
 
         tree = df.copy()
         tree["표시명"] = tree.apply(
-            lambda x: "📌 " + x["종목명"]
-            if x["보유종목"] else x["종목명"],
+            lambda x: "📌 " + x["종목명"] if x["보유종목"] else x["종목명"],
             axis=1,
         )
         tree["시장"] = "KOSPI / KOSDAQ"
@@ -568,7 +648,11 @@ if st.session_state.get("analysis_complete", False):
             values="시가총액",
             color="점수",
             color_continuous_scale=[
-                "#0b486b", "#3b8d99", "#cccccc", "#f56217", "#ff0000"
+                "#0b486b",
+                "#3b8d99",
+                "#cccccc",
+                "#f56217",
+                "#ff0000",
             ],
             range_color=[30, 90],
         )
@@ -639,12 +723,20 @@ if st.session_state.get("analysis_complete", False):
             )
         else:
             portfolio_df = pd.DataFrame(portfolio).copy()
-            portfolio_df["신호"] = portfolio_df["점수"].apply(investment_signal)
+            portfolio_df["신호"] = portfolio_df["점수"].apply(
+                investment_signal
+            )
 
             display_columns = [
-                "종목명", "섹터", "점수", "신호",
-                "5년수익률", "1년수익률", "3개월수익률",
-                "거래량모멘텀", "변동성",
+                "종목명",
+                "섹터",
+                "점수",
+                "신호",
+                "5년수익률",
+                "1년수익률",
+                "3개월수익률",
+                "거래량모멘텀",
+                "변동성",
             ]
 
             st.dataframe(
@@ -657,9 +749,8 @@ if st.session_state.get("analysis_complete", False):
 
             st.markdown("### 📈 보유종목 점수")
 
-            chart_port = (
-                portfolio_df[["종목명", "점수"]]
-                .sort_values("점수")
+            chart_port = portfolio_df[["종목명", "점수"]].sort_values(
+                "점수"
             )
 
             fig_port = px.bar(
@@ -718,9 +809,14 @@ if st.session_state.get("analysis_complete", False):
     st.markdown("## 🏆 전체 종목 순위")
 
     ranking_columns = [
-        "종목명", "섹터", "점수",
-        "5년수익률", "1년수익률", "3개월수익률",
-        "거래량모멘텀", "변동성",
+        "종목명",
+        "섹터",
+        "점수",
+        "5년수익률",
+        "1년수익률",
+        "3개월수익률",
+        "거래량모멘텀",
+        "변동성",
     ]
 
     ranking = df[ranking_columns].copy()
