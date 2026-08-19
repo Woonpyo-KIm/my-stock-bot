@@ -8,6 +8,9 @@ import FinanceDataReader as fdr
 
 st.set_page_config(page_title="AI Market Map PRO v4.5", page_icon="🗺️", layout="wide")
 
+# ==========================================
+# 📱 모바일 최적화 커스텀 CSS (표 너비 및 텍스트 자동 조절)
+# ==========================================
 st.markdown("""
 <style>
 @media (max-width: 768px) {
@@ -18,16 +21,21 @@ st.markdown("""
     [data-testid="stMetricValue"] { font-size: 1.3rem !important; word-break: break-word !important; }
     [data-testid="stMetricLabel"] { font-size: 0.85rem !important; }
 }
+/* 포트폴리오 입력창 강조 스타일 */
+div[data-testid="stExpander"] {
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# 0을 중앙(회색)으로 두는 대칭 컬러 스케일
+# 한국식 컬러 스케일: 0% 중앙(회색), 상승(빨강), 하락(파랑)
 COLOR_SCALE = [
-    [0.0,  "#1e3a8a"],  # 파랑 (하락)
+    [0.0,  "#1e3a8a"],  
     [0.25, "#60a5fa"],  
-    [0.50, "#e2e8f0"],  # 보합 (0%)
+    [0.50, "#e2e8f0"],  
     [0.75, "#f87171"],  
-    [1.0,  "#dc2626"]   # 빨강 (상승)
+    [1.0,  "#dc2626"]   
 ]
 
 SP500_SECTOR_MAP = {
@@ -155,8 +163,11 @@ def outlook(df):
     label = "🟢 Strong Bull" if p >= 4 else "🟢 Mild Bull" if p >= 2 else "🔴 Strong Bear" if p <= -4 else "🟠 Bear/Defensive" if p <= -2 else "🟡 Neutral/Mixed"
     return label, f"Avg Score {a:.1f}, Avg 3M {r3:.1f}%, Avg 1M {r1:.1f}%, HOT ratio {hot:.1f}%, Positive 3M ratio {pos:.1f}%"
 
+# ==========================================
+# 🚀 메인 화면 헤더
+# ==========================================
 st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.5</h1>", unsafe_allow_html=True)
-st.caption("🔥 True Heatmap Engine Applied (Size=Score, Color=1M Return)")
+st.caption("🔥 True Heatmap Engine Applied (Size=Score, Color=1M Return) · Responsive UI")
 
 if "portfolio_data_us" not in st.session_state:
     st.session_state.portfolio_data_us = pd.DataFrame([
@@ -166,21 +177,47 @@ if "portfolio_data_us" not in st.session_state:
         {"Ticker": "AAPL", "Quantity": 0.0, "Avg Price": 0.0}
     ])
 
+# ==========================================
+# 🚀 사이드바 (분석 설정 전용)
+# ==========================================
 with st.sidebar:
-    st.header("💼 My Portfolio Input")
-    with st.form("portfolio_form_us"):
-        st.caption("Enter US Tickers (e.g. AAPL, DELL).")
-        edited_df = st.data_editor(
-            st.session_state.portfolio_data_us, num_rows="dynamic", use_container_width=True, hide_index=True, key="portfolio_editor_us"
-        )
-        run = st.form_submit_button("🗺️ Start PRO US Market Analysis", use_container_width=True, type="primary")
-
-    st.divider()
     st.header("⚙️ Analysis Settings")
+    st.markdown("**🔍 Technical Ranking Screening**")
     pool_size = st.slider("Initial Scan Pool (S&P 500 Caps)", 50, 300, 250, 50)
     n = st.slider("Final Displayed Stocks (Top Score)", 20, 100, 50, 10)
     workers = st.slider("Concurrent Requests (Speed)", 2, 8, 5)
+    
+    st.divider()
+    if st.button("🔄 Clear Cache", use_container_width=True):
+        st.cache_data.clear(); st.rerun()
 
+# ==========================================
+# 🚀 별도 창(Expander)으로 분리된 포트폴리오 입력칸
+# ==========================================
+is_expanded = not st.session_state.get("analysis_complete_us", False)
+
+with st.expander("💼 My Portfolio Input (Click to Open/Close)", expanded=is_expanded):
+    st.markdown("### 📝 Enter Your US Stocks")
+    st.caption("표 안의 셀을 클릭해 티커(Ticker)를 입력하세요. 너비는 화면에 맞게 자동 조절됩니다.")
+    
+    with st.form("portfolio_form_us"):
+        edited_df = st.data_editor(
+            st.session_state.portfolio_data_us, 
+            num_rows="dynamic", 
+            use_container_width=True, 
+            hide_index=True, 
+            column_config={
+                "Ticker": st.column_config.TextColumn("Ticker (Symbol)", help="e.g. AAPL, NVDA", required=True),
+                "Quantity": st.column_config.NumberColumn("Quantity", help="Number of shares", min_value=0.0),
+                "Avg Price": st.column_config.NumberColumn("Avg Price ($)", help="Average purchase price in USD", min_value=0.0, format="$ %.2f")
+            },
+            key="portfolio_editor_us"
+        )
+        run = st.form_submit_button("🗺️ Save & Start PRO US Market Analysis", use_container_width=True, type="primary")
+
+# ==========================================
+# 🚀 메인 분석 로직
+# ==========================================
 if run:
     st.session_state.portfolio_data_us = edited_df.copy()
     ps = edited_df.dropna(subset=["Ticker"]).to_dict(orient="records")
@@ -229,7 +266,11 @@ if run:
     df_port = df[df["Owned"]]
     df = pd.concat([df_port, df_others]).sort_values(["Score", "3M Return"], ascending=False).reset_index(drop=True)
     st.session_state.update(market_results_us=df, portfolio_results_us=pd.DataFrame(p_rows), analysis_complete_us=True)
+    st.rerun() # 분석 완료 후 입력창을 자동으로 접기 위해 새로고침
 
+# ==========================================
+# 🚀 결과 대시보드 렌더링
+# ==========================================
 if st.session_state.get("analysis_complete_us"):
     df = st.session_state.market_results_us; pf = st.session_state.portfolio_results_us
     ol, why = outlook(df)
@@ -258,18 +299,17 @@ if st.session_state.get("analysis_complete_us"):
         x = df.copy()
         x["Display Name"] = x.apply(lambda r: "📌 " + r.Ticker if r.Owned else r.Ticker, axis=1)
         
-        # 박스 크기는 Score 기준
+        # 박스 크기는 종합 점수(Score) 기준
         x["Prospect Size"] = (pd.to_numeric(x["Score"], errors="coerce").clip(0, 100) + 1) ** 2
 
-        # 🚨🚨 [진짜 프로의 해결책] 색상은 '1개월 수익률(1M Return)'을 기준으로! 🚨🚨
-        # 0%를 완벽히 정중앙(회색)으로 잡기 위해 최고/최저 수익률 중 큰 절댓값을 찾아 양끝으로 대칭 설정합니다.
+        # 🚨 [가장 완벽한 색상 스케일 로직] 0%를 정중앙(회색)으로 고정하기 위한 대칭 설계
         max_abs_ret = max(abs(x["1M Return"].min()), abs(x["1M Return"].max()))
         if max_abs_ret == 0: max_abs_ret = 1.0
         
         fig = px.treemap(
-            x, path=["Sector", "Display Name"], values="Prospect Size", color="1M Return", # Score가 아닌 실제 수익률로 컬러 매핑
+            x, path=["Sector", "Display Name"], values="Prospect Size", color="1M Return", 
             color_continuous_scale=COLOR_SCALE, 
-            range_color=[-max_abs_ret, max_abs_ret], # 0을 정확히 회색으로 고정
+            range_color=[-max_abs_ret, max_abs_ret], 
             custom_data=["Score", "3M Return", "1M Return", "Action"]
         )
         fig.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0), coloraxis_showscale=True)
@@ -292,7 +332,6 @@ if st.session_state.get("analysis_complete_us"):
     
     with t2:
         s = df.groupby("Sector").agg(Avg_Score=("Score","mean"), Avg_1M=("1M Return","mean")).reset_index().sort_values("Avg_Score", ascending=False)
-        # 섹터 탭의 색상도 수익률 기준으로 대칭 정렬
         fig = px.bar(s.sort_values("Avg_Score"), x="Avg_Score", y="Sector", orientation="h", text="Avg_Score", color="Avg_1M", color_continuous_scale=COLOR_SCALE, range_color=[-max_abs_ret, max_abs_ret])
         fig.update_traces(texttemplate='%{text:.1f}')
         fig.update_layout(height=500, coloraxis_showscale=False); st.plotly_chart(fig, use_container_width=True)
@@ -316,4 +355,4 @@ if st.session_state.get("analysis_complete_us"):
             q[col] = q[col].apply(lambda x: f"$ {x:,.2f}")
         st.dataframe(q, use_container_width=True, hide_index=True)
 else:
-    st.info("👆 Open the sidebar (top left) to enter your portfolio and click **Start PRO US Market Analysis** to begin.")
+    st.info("👆 Enter your portfolio above and click **Save & Start PRO US Market Analysis** to begin.")
