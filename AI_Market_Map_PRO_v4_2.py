@@ -9,7 +9,7 @@ import FinanceDataReader as fdr
 st.set_page_config(page_title="AI Market Map PRO v4.4 (US Market)", page_icon="🗺️", layout="wide")
 
 # ==========================================
-# 📱 모바일 최적화 커스텀 CSS 주입
+# 📱 모바일 최적화 커스텀 CSS
 # ==========================================
 st.markdown("""
 <style>
@@ -36,14 +36,14 @@ st.markdown("""
 
 # 파랑-회색-빨강 컬러 스케일
 COLOR_SCALE = [
-    [0.0,  "#1e3a8a"],  # 최저점 (파랑)
+    [0.0,  "#1e3a8a"],  
     [0.25, "#60a5fa"],  
-    [0.50, "#e2e8f0"],  # 중간점 (회색)
+    [0.50, "#e2e8f0"],  
     [0.75, "#f87171"],  
-    [1.0,  "#dc2626"]   # 최고점 (빨강)
+    [1.0,  "#dc2626"]   
 ]
 
-# S&P 500 공식 섹터 영문 -> 이모지 매핑
+# [버그 픽스] S&P 500 공식 섹터 영문 -> 이모지 매핑
 SP500_SECTOR_MAP = {
     "Information Technology": "⚡ Technology",
     "Health Care": "🧬 Healthcare",
@@ -58,7 +58,6 @@ SP500_SECTOR_MAP = {
     "Materials": "🧪 Materials"
 }
 
-# 기본 오프라인 fallback 종목 리스트
 US_TOP_TICKERS = [
     ("AAPL", "Apple", "Information Technology"), ("MSFT", "Microsoft", "Information Technology"), 
     ("NVDA", "NVIDIA", "Information Technology"), ("GOOGL", "Alphabet", "Communication Services"),
@@ -83,14 +82,19 @@ def load_us_universe():
         x = fdr.StockListing('S&P500')
         if x is not None and not x.empty:
             x = x.copy()
-            symbol_col = "Symbol" if "Symbol" in x.columns else "Ticker"
-            name_col = "Name" if "Name" in x.columns else "Symbol"
-            sector_col = "Sector" if "Sector" in x.columns else "Industry"
+            # [버그 픽스] 데이터 소스의 실제 컬럼명에 맞춰 안전하게 추출
+            sym_col = "Symbol" if "Symbol" in x.columns else "Ticker" if "Ticker" in x.columns else x.columns[0]
+            name_col = "Security" if "Security" in x.columns else "Name" if "Name" in x.columns else x.columns[1]
+            sec_col = "GICS Sector" if "GICS Sector" in x.columns else "Sector" if "Sector" in x.columns else "Industry" if "Industry" in x.columns else None
             
-            x = x.rename(columns={symbol_col: "Code", name_col: "Name", sector_col: "RawSector"})
+            x = x.rename(columns={sym_col: "Code", name_col: "Name"})
+            if sec_col and sec_col in x.columns:
+                x["Sector"] = x[sec_col].map(SP500_SECTOR_MAP).fillna("💡 Growth/Others")
+            else:
+                x["Sector"] = "💡 Growth/Others"
+                
             x["Code"] = x["Code"].astype(str).str.strip().str.upper()
             x["Name"] = x["Name"].astype(str).str.strip()
-            x["Sector"] = x["RawSector"].map(SP500_SECTOR_MAP).fillna("💡 Growth/Others")
             x["Marcap"] = 0
             x["Volume"] = 0
             return x.drop_duplicates("Code"), False
@@ -121,14 +125,7 @@ def ret(close, days):
 def analyze(ticker, name, sector_name="💡 Growth/Others", marcap=0, volume=0):
     ticker = str(ticker).upper()
     x = get_price(ticker)
-    base = {
-        "Ticker": ticker, 
-        "Company": name, 
-        "Sector": sector_name, 
-        "Market Cap": float(marcap or 0), 
-        "Volume": float(volume or 0), 
-        "Chart": x.tail(100)
-    }
+    base = {"Ticker": ticker, "Company": name, "Sector": sector_name, "Market Cap": float(marcap or 0), "Volume": float(volume or 0), "Chart": x.tail(100)}
     
     if x.empty: 
         return {**base, "Current Price": 0, "5Y Return": 0, "1Y Return": 0, "3M Return": 0, "1M Return": 0, "Vol Momentum": 0, "Volatility": 0, "Max Drawdown": 0, "Trend Score": 0, "Score": 0, "Action": "⚪ No Data", "Est. Market Price": 0}
@@ -161,15 +158,10 @@ def analyze(ticker, name, sector_name="💡 Growth/Others", marcap=0, volume=0):
     if dd < -35: score -= 5
     score = int(max(0, min(100, round(score))))
     
-    # 모바일용 문구 간소화
+    # [버그 픽스] 모바일 화면 잘림을 막기 위한 텍스트 간소화
     action = "🟢 Strong Buy" if score >= 82 and r3 > 5 and r1m > 0 else "🟢 Buy/Hold" if score >= 72 and r3 >= 0 else "🟡 Watch" if score >= 62 else "🟠 Trim" if score >= 48 else "🔴 Sell"
     
-    return {
-        **base, "Current Price": cur, "5Y Return": round(r5, 2), "1Y Return": round(r1, 2), 
-        "3M Return": round(r3, 2), "1M Return": round(r1m, 2), "Vol Momentum": round(vm, 2), 
-        "Volatility": round(vol, 2), "Max Drawdown": round(dd, 2), "Trend Score": int(trend), 
-        "Score": score, "Action": action, "Est. Market Price": est_market_price
-    }
+    return {**base, "Current Price": cur, "5Y Return": round(r5, 2), "1Y Return": round(r1, 2), "3M Return": round(r3, 2), "1M Return": round(r1m, 2), "Vol Momentum": round(vm, 2), "Volatility": round(vol, 2), "Max Drawdown": round(dd, 2), "Trend Score": int(trend), "Score": score, "Action": action, "Est. Market Price": est_market_price}
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def news(ticker, limit=5):
@@ -203,7 +195,7 @@ def outlook(df):
     return label, f"Avg Score {a:.1f}, Avg 3M {r3:.1f}%, Avg 1M {r1:.1f}%, HOT ratio {hot:.1f}%, Positive 3M ratio {pos:.1f}%"
 
 st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.4</h1>", unsafe_allow_html=True)
-st.caption("🔥 Accurate Sector Mapping · Relative Dynamic Color Scaling · Mobile Optimized")
+st.caption("🔥 Accurate Sector Mapping · True Relative Color Scale · Mobile Optimized UI")
 
 # ==========================================
 # 🚀 입력창 패널 (Sidebar)
@@ -237,6 +229,7 @@ with st.sidebar:
     n = st.slider("Final Displayed Stocks (Top Score)", 20, 100, 50, 10)
     workers = st.slider("Concurrent Requests (Speed)", 2, 8, 5)
     
+    # [중요] 반드시 캐시를 초기화해야 이전 섹터 구조가 날아갑니다.
     if st.button("🔄 Clear Cache", use_container_width=True):
         st.cache_data.clear(); st.rerun()
 
@@ -255,7 +248,7 @@ if run:
     c = u.head(pool_size)
     jobs = {}
     for _, r in c.iterrows():
-        jobs[r.Code] = (r.Name, r.Sector, 0, 0)
+        jobs[r.Code] = (r.Name, str(r.Sector), 0, 0)
         
     for p in ps:
         code, name, sec = resolve(p["Ticker"], u)
@@ -327,7 +320,7 @@ if st.session_state.get("analysis_complete_us"):
         x["Prospect"] = pd.to_numeric(x["Score"], errors="coerce").clip(0, 100)
         x["Prospect Size"] = (x["Prospect"] + 1) ** 2
 
-        # [수정] 스케일 버그 완벽 해결: 현재 화면 종목들의 최소점~최고점을 범위로 지정하여 상대 평가
+        # [버그 픽스] 현재 선별된 종목의 "실제 최고점과 최저점"을 컬러 스케일의 끝과 끝으로 명확하게 매핑
         min_score = float(x["Prospect"].min())
         max_score = float(x["Prospect"].max())
         
@@ -353,7 +346,7 @@ if st.session_state.get("analysis_complete_us"):
             )
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"📌 Relative Color Range: Min Score ({min_score:.0f} pts, Blue) ~ Max Score ({max_score:.0f} pts, Red)")
+        st.caption(f"📌 Relative Color Range: {min_score:.0f} pts (Blue) to {max_score:.0f} pts (Red)")
         
         st.divider()
         st.markdown("### 🖱️ Stock Quick View")
@@ -363,7 +356,7 @@ if st.session_state.get("analysis_complete_us"):
             r_quick = df[df.Ticker == sel_quick].iloc[0]
             
             reasons = []
-            if r_quick["Trend Score"] >= 70: reasons.append("✅ **Trend Bullish:** Breaking above 20/60/120-day moving averages.")
+            if r_quick["Trend Score"] >= 70: reasons.append("✅ **Trend Bullish:** Breaking above 20/60/120-day MAs.")
             elif r_quick["Trend Score"] >= 35: reasons.append("⚠️ **Trend Neutral:** Recovering short-term MAs.")
             else: reasons.append("🚨 **Trend Bearish:** Trending below major MAs.")
             
