@@ -5,9 +5,10 @@ import time
 import datetime
 import FinanceDataReader as fdr
 import xml.etree.ElementTree as ET
+import plotly.express as px  # 트리맵 시각화를 위한 라이브러리
 
 # -------------------------------------------------------------------
-# [1] 웹페이지 기본 설정 및 커스텀 CSS (네이버 주식 히트맵 스타일)
+# [1] 웹페이지 기본 설정
 # -------------------------------------------------------------------
 st.set_page_config(page_title="AI 섹터 히트맵 어드바이저", page_icon="🔥", layout="centered")
 
@@ -28,26 +29,6 @@ st.markdown("""
         color: #666;
         font-size: 0.95rem;
         margin-bottom: 1.5rem;
-    }
-    .badge-my {
-        background-color: #ffd700;
-        color: #000;
-        padding: 3px 8px;
-        border-radius: 12px;
-        font-weight: bold;
-        font-size: 0.8rem;
-        display: inline-block;
-        margin: 2px;
-    }
-    .badge-top {
-        background-color: #ff4757;
-        color: #fff;
-        padding: 3px 8px;
-        border-radius: 12px;
-        font-weight: bold;
-        font-size: 0.8rem;
-        display: inline-block;
-        margin: 2px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -92,7 +73,6 @@ def get_robust_news(stock_name, limit=2):
     while len(news_list) < limit: news_list.append("-")
     return news_list[:limit]
 
-# 5대 메가트렌드 섹터 정의
 MEGATRENDS = {
     "⚡ AI 반도체/인프라": ["AI", "반도체", "HBM", "NPU", "전력", "데이터센터", "메모리", "테스", "에스에이엠티", "SK하이닉스", "삼성전자"],
     "🤖 로보틱스/자동화": ["로봇", "자동화", "스마트팩토리", "휴머노이드", "두산로보틱스", "레인보우로보틱스"],
@@ -127,8 +107,8 @@ def evaluate_stock(stock_name, return_5y, return_1y, news_list):
 # -------------------------------------------------------------------
 # [3] 프론트엔드 UI
 # -------------------------------------------------------------------
-st.markdown('<p class="main-title">AI 시장 섹터 히트맵 & 리밸런싱</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">네이버 금융 마켓 스타일로 한눈에 보는 섹터 지수와 내 종목의 위치</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">AI 시장 섹터 트리맵 & 리밸런싱</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">네이버 금융 마켓 스타일의 직관적인 섹터 맵핑 및 진단</p>', unsafe_allow_html=True)
 
 with st.container(border=True):
     st.markdown("#### 💼 내 포트폴리오 입력")
@@ -139,10 +119,10 @@ with st.container(border=True):
 
 if st.button("🔥 실시간 섹터 맵 & 퀀트 분석 가동", use_container_width=True, type="primary"):
     
-    with st.spinner("섹터별 모멘텀 계산 및 내 종목 위치 맵핑 중..."):
+    with st.spinner("섹터별 모멘텀 계산 및 트리맵 렌더링 중..."):
         candidates, df_krx = load_universe()
         
-        # 1. 시장 추천주 계산
+        # 1. 시장 추천주 평가
         eval_results = []
         for idx, row in enumerate(candidates.iterrows()):
             _, r = row
@@ -153,20 +133,20 @@ if st.button("🔥 실시간 섹터 맵 & 퀀트 분석 가동", use_container_w
             
             eval_results.append({
                 '종목명': name, '섹터': sector, '점수': score, 
-                '5년성장': r5y, '1년성장': r1y, '뉴스': news[0]
+                '5년성장': r5y, '1년성장': r1y, '뉴스': news[0], '타입': '시장후보'
             })
             
         result_df = pd.DataFrame(eval_results).sort_values(by='점수', ascending=False)
         top_pick = result_df.iloc[0]
 
-        # 2. 내 보유 종목 계산
+        # 2. 내 종목 분석
         my_portfolio = [stock.strip() for stock in user_input.split(',')]
         my_results = []
         
         for my_stock in my_portfolio:
             stock_info = df_krx[df_krx['Name'] == my_stock]
             if stock_info.empty:
-                my_results.append({"종목명": my_stock, "섹터": "기타", "점수": 0, "알림": "error"})
+                my_results.append({"종목명": my_stock, "섹터": "기타", "점수": 0, "알림": "error", "타입": "내종목"})
                 continue
                 
             code = stock_info.iloc[0]['Code']
@@ -176,84 +156,76 @@ if st.button("🔥 실시간 섹터 맵 & 퀀트 분석 가동", use_container_w
             
             diff = top_pick['점수'] - my_score
             if diff >= 20: action, msg_type = f"🚨 1등주({top_pick['종목명']})로 교체 검토", "warning"
-            elif diff > 0: action, msg_type = "🛡️ 보유 유지 (상위권 보유 중)", "info"
-            else: action, msg_type = "👑 강력 보유 (시장의 최우수 종목)", "success"
+            elif diff > 0: action, msg_type = "🛡️ 보유 유지 (상위권)", "info"
+            else: action, msg_type = "👑 강력 보유", "success"
                 
             my_results.append({
                 "종목명": my_stock, "섹터": sector, "점수": my_score, 
-                "5년성장": r5y, "액션": action, "알림": msg_type, "뉴스": news[0]
+                "5년성장": r5y, "액션": action, "알림": msg_type, "뉴스": news[0], "타입": "내종목"
             })
 
-        # -------------------------------------------------------------------
-        # 3. 섹터 점수 집계 (히트맵 색상 판정용)
-        # -------------------------------------------------------------------
-        sector_summary = {}
-        for sec in MEGATRENDS.keys():
-            # 추천주 + 내 종목 포함 해당 섹터의 평균 점수 계산
-            sec_stocks = [r for r in eval_results + my_results if r['섹터'] == sec]
-            avg_score = sum([s['점수'] for s in sec_stocks]) / len(sec_stocks) if sec_stocks else 40.0
-            
-            # 내 종목 위치 추출
-            my_in_sec = [m['종목명'] for m in my_results if m['섹터'] == sec]
-            # 추천 1위 위치 추출
-            top_in_sec = [top_pick['종목명']] if top_pick['섹터'] == sec else []
-            
-            sector_summary[sec] = {
-                "score": round(avg_score, 1),
-                "my_stocks": my_in_sec,
-                "top_stock": top_in_sec
-            }
-
-        # 점수 순으로 섹터 정렬 (가장 높을수록 핫한 섹터)
-        sorted_sectors = sorted(sector_summary.items(), key=lambda x: x[1]['score'], reverse=True)
-
     # -------------------------------------------------------------------
-    # [4] 결과 출력 화면 (탭 분리)
+    # [4] 트리맵(Treemap) 시각화 데이터 병합
     # -------------------------------------------------------------------
-    tab_map, tab_top, tab_my = st.tabs(["🔥 섹터 히트맵 (마켓 지형도)", "🏆 AI 추천주 Top 5", "💼 내 포트폴리오 진단"])
+    # 시장 후보군과 내 종목을 하나로 합쳐서 지도에 그리기 위함
+    treemap_data = []
     
-    # [탭 1] 실시간 섹터 히트맵 화면
-    with tab_map:
-        st.markdown("### 📊 실시간 AI 주도 섹터 지형도")
-        st.caption("🔴 빨간색일수록 현재 시장의 강력한 주도 섹터이며, 🔵 파란색일수록 둔화된 섹터입니다.")
+    # 1등 픽과 내 종목은 특별한 아이콘(👑, 📌)을 붙여서 지도에서 직관적으로 보이게 함
+    for res in eval_results:
+        display_name = f"👑 {res['종목명']}" if res['종목명'] == top_pick['종목명'] else res['종목명']
+        treemap_data.append({'섹터': res['섹터'], '표시명': display_name, '점수': res['점수'], '크기': 1})
         
-        # 5개 섹터를 점수순에 따라 색상 매핑
-        colors = [
-            {"bg": "#ff3333", "txt": "#ffffff", "label": "🔥 최강 주도 섹터"},
-            {"bg": "#ff7733", "txt": "#ffffff", "label": "☀️ 상승 우세 섹터"},
-            {"bg": "#6c757d", "txt": "#ffffff", "label": "➖ 중립 섹터"},
-            {"bg": "#3385ff", "txt": "#ffffff", "label": "❄️ 하락 조정 섹터"},
-            {"bg": "#004080", "txt": "#ffffff", "label": "🧊 침체/약세 섹터"}
-        ]
-        
-        for rank, (sec_name, sec_data) in enumerate(sorted_sectors):
-            color = colors[rank] if rank < len(colors) else colors[-1]
-            
-            # HTML 카드로 네이버 주식 마켓 느낌 구현
-            card_html = f"""
-            <div style="background-color: {color['bg']}; color: {color['txt']}; padding: 15px; border-radius: 12px; margin-bottom: 12px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 1.1rem; font-weight: bold;">{rank+1}. {sec_name}</span>
-                    <span style="font-size: 0.9rem; background: rgba(0,0,0,0.2); padding: 2px 8px; border-radius: 8px;">{color['label']} | 평균 {sec_data['score']}점</span>
-                </div>
-            """
-            
-            # 내 종목 / AI 1등 픽 위치 뱃지 표시
-            badges = ""
-            if sec_data['top_stock']:
-                for ts in sec_data['top_stock']:
-                    badges += f"<span class='badge-top'>👑 AI 1등 추천: {ts}</span> "
-            if sec_data['my_stocks']:
-                for ms in sec_data['my_stocks']:
-                    badges += f"<span class='badge-my'>📌 내 보유 종목: {ms}</span> "
-            
-            if not badges:
-                badges = "<span style='font-size: 0.8rem; opacity: 0.8;'>이 섹터에는 현재 보유/추천 종목이 없습니다.</span>"
-                
-            card_html += f"<div style='margin-top: 10px;'>{badges}</div></div>"
-            st.markdown(card_html, unsafe_allow_html=True)
+    for res in my_results:
+        if res['알림'] != 'error':
+            # 내 종목이 시장 후보군(위)에 이미 있었는지 중복 체크 후 병합
+            if not any(res['종목명'] in d['표시명'] for d in treemap_data):
+                treemap_data.append({'섹터': res['섹터'], '표시명': f"📌 {res['종목명']}", '점수': res['점수'], '크기': 1})
+            else:
+                # 이미 있다면 내 종목 마크만 업데이트
+                for d in treemap_data:
+                    if res['종목명'] in d['표시명']:
+                        d['표시명'] = f"📌👑 {res['종목명']}" if "👑" in d['표시명'] else f"📌 {res['종목명']}"
 
-    # [탭 2] AI 추천주 Top 5
+    df_tree = pd.DataFrame(treemap_data)
+    # 루트 노드(시장 전체) 설정
+    df_tree['전체시장'] = "🇰🇷 전체 시장 (AI 메가트렌드)"
+
+    # -------------------------------------------------------------------
+    # [5] 화면 탭 구성
+    # -------------------------------------------------------------------
+    tab_map, tab_top, tab_my = st.tabs(["🔥 섹터 트리맵 (마켓 지형도)", "🏆 AI 추천주 Top 5", "💼 내 포트폴리오 진단"])
+    
+    # [탭 1] 실시간 섹터 트리맵 (네이버 UI 완벽 복제)
+    with tab_map:
+        st.markdown("### 📊 실시간 AI 주도 섹터 트리맵")
+        st.caption("🔴 빨간색일수록 유망/상승(Hot) 섹터이며, 🔵 파란색일수록 둔화/하락(Cold) 섹터입니다. 박스를 터치해 보세요!")
+        
+        # Plotly를 이용한 계층형 트리맵 생성
+        fig = px.treemap(
+            df_tree, 
+            path=['전체시장', '섹터', '표시명'], # 계층 구조 (전체 -> 섹터 -> 종목)
+            values='크기', # 각 박스의 크기 비중
+            color='점수', # 점수에 따른 색상 변화
+            color_continuous_scale=['#1a5293', '#4579c6', '#d6dde6', '#f2766f', '#d92c2c'], # 네이버 파란색 -> 빨간색 그라데이션
+            range_color=[30, 90] # 점수 범위 고정 (극단적 색상 배정용)
+        )
+        
+        fig.update_layout(
+            margin=dict(t=10, l=10, r=10, b=10),
+            coloraxis_showscale=False # 지저분한 컬러바 숨김
+        )
+        # 종목 글씨 크기 및 디자인 세팅
+        fig.update_traces(
+            textinfo="label+value",
+            textfont=dict(size=14, color="white"),
+            hoverinfo="label+color"
+        )
+        
+        # 화면에 그래프 출력
+        st.plotly_chart(fig, use_container_width=True)
+        st.info("**범례:** 👑 AI 1등 추천주 | 📌 내 보유 종목")
+
+    # [탭 2] AI 추천주
     with tab_top:
         st.markdown(f"### 🏆 오늘의 시장 전체 1등: **{top_pick['종목명']}**")
         with st.container(border=True):
@@ -265,9 +237,9 @@ if st.button("🔥 실시간 섹터 맵 & 퀀트 분석 가동", use_container_w
         with st.expander("📊 AI 시장 추천주 Top 5 전체 보기"):
             st.dataframe(result_df[['섹터', '종목명', '점수', '5년성장']].head(5), hide_index=True)
 
-    # [탭 3] 내 포트폴리오 진단
+    # [탭 3] 내 포트폴리오
     with tab_my:
-        st.markdown("### 💼 내 종목 섹터 위치 및 리밸런싱 판정")
+        st.markdown("### 💼 내 종목 리밸런싱 판정")
         for res in my_results:
             if res["알림"] == "error":
                 st.error(f"❌ {res['종목명']}: 데이터를 찾을 수 없습니다.")
