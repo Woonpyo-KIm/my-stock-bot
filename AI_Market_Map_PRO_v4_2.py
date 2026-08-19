@@ -17,18 +17,18 @@ COLOR_SCALE = [
 ]
 
 SECTORS={
-"⚡ AI/반도체":["삼성전자","SK하이닉스","한미반도체","테스","에스에이엠티","DB하이텍","리노공업","이오테크닉스","HPSP","원익IPS","반도체"],
-"🤖 로봇/자동화":["두산로보틱스","레인보우로보틱스","로보티즈","뉴로메카","에스피지","로봇","자동화"],
-"🚢 조선/방산":["한화오션","HD현대중공업","HD한국조선해양","삼성중공업","한화에어로스페이스","한국항공우주","LIG넥스원","현대로템","조선","방산"],
-"🧬 바이오/제약":["삼성바이오로직스","셀트리온","유한양행","알테오젠","HLB","바이오","제약"],
-"🚗 자동차/부품":["현대차","기아","현대모비스","HL만도","한온시스템","자동차"],
-"💰 금융/지주":["KB금융","신한지주","하나금융지주","우리금융지주","메리츠금융지주","BNK금융지주","금융","은행"],
-"🔋 2차전지":["LG에너지솔루션","삼성SDI","SK이노베이션","POSCO홀딩스","포스코퓨처엠","에코프로","에코프로비엠","배터리","2차전지"],
-"📱 통신/네트워크":["SK텔레콤","KT","LG유플러스","통신"],
-"🎬 엔터/게임":["하이브","에스엠","JYP","YG","엔씨소프트","카카오게임즈","넷마블","게임","엔터"],
-"🛒 유통/소비재":["이마트","신세계","롯데쇼핑","아모레퍼시픽","LG생활건강","화장품","유통"],
-"🏗️ 건설/부동산":["현대건설","GS건설","대우건설","DL이앤씨","건설","부동산"],
-"🧪 철강/화학":["POSCO홀딩스","포스코인터내셔널","LG화학","롯데케미칼","금호석유","S-Oil","철강","화학"]}
+"⚡ AI/Semiconductor":["삼성전자","SK하이닉스","한미반도체","테스","에스에이엠티","DB하이텍","리노공업","이오테크닉스","HPSP","원익IPS","반도체"],
+"🤖 Robot/Automation":["두산로보틱스","레인보우로보틱스","로보티즈","뉴로메카","에스피지","로봇","자동화"],
+"🚢 Shipbuilding/Defense":["한화오션","HD현대중공업","HD한국조선해양","삼성중공업","한화에어로스페이스","한국항공우주","LIG넥스원","현대로템","조선","방산"],
+"🧬 Bio/Pharma":["삼성바이오로직스","셀트리온","유한양행","알테오젠","HLB","바이오","제약"],
+"🚗 Auto/Parts":["현대차","기아","현대모비스","HL만도","한온시스템","자동차"],
+"💰 Finance/Holding":["KB금융","신한지주","하나금융지주","우리금융지주","메리츠금융지주","BNK금융지주","금융","은행"],
+"🔋 EV Battery":["LG에너지솔루션","삼성SDI","SK이노베이션","POSCO홀딩스","포스코퓨처엠","에코프로","에코프로비엠","배터리","2차전지"],
+"📱 Telecom/Network":["SK텔레콤","KT","LG유플러스","통신"],
+"🎬 Enter/Game":["하이브","에스엠","JYP","YG","엔씨소프트","카카오게임즈","넷마블","게임","엔터"],
+"🛒 Retail/Consumer":["이마트","신세계","롯데쇼핑","아모레퍼시픽","LG생활건강","화장품","유통"],
+"🏗️ Const/Real Estate":["현대건설","GS건설","대우건설","DL이앤씨","건설","부동산"],
+"🧪 Steel/Chemical":["POSCO홀딩스","포스코인터내셔널","LG화학","롯데케미칼","금호석유","S-Oil","철강","화학"]}
 
 FALLBACK=[
 ("005930","삼성전자",650),("000660","SK하이닉스",300),("373220","LG에너지솔루션",100),
@@ -100,8 +100,8 @@ def ret(close,days):
     return (close.iloc[-1]/p.iloc[-1]-1)*100 if p.iloc[-1]>0 else 0.0
 
 def analyze(code,name,marcap=0,volume=0):
-    x=get_price(code); base={"종목명":name,"종목코드":str(code).zfill(6),"섹터":sector(name),"시가총액":float(marcap or 0),"거래량":float(volume or 0),"차트":x.tail(100)}
-    if x.empty:return {**base,"현재가":0,"5년수익률":0,"1년수익률":0,"3개월수익률":0,"1개월수익률":0,"거래량모멘텀":0,"변동성":0,"최대낙폭":0,"추세점수":0,"점수":0,"판단":"⚪ 데이터 부족","시장추정단가":0}
+    x=get_price(code); base={"Stock Name":name,"Code":str(code).zfill(6),"Sector":sector(name),"Market Cap":float(marcap or 0),"Volume":float(volume or 0),"Chart":x.tail(100)}
+    if x.empty:return {**base,"Current Price":0,"5Y Return":0,"1Y Return":0,"3M Return":0,"1M Return":0,"Vol Momentum":0,"Volatility":0,"Max Drawdown":0,"Trend Score":0,"Score":0,"Action":"⚪ Insufficient Data","Est. Market Price":0}
     c=pd.to_numeric(x.Close,errors="coerce").dropna(); cur=float(c.iloc[-1])
     r5,r1,r3,r1m=[ret(c,d) for d in (1825,365,90,30)]
     vm=0
@@ -125,9 +125,9 @@ def analyze(code,name,marcap=0,volume=0):
     if vol>80:score-=5
     if dd<-35:score-=5
     score=int(max(0,min(100,round(score))))
-    action="🟢 적극 보유 / 추가매수" if score>=82 and r3>5 and r1m>0 else "🟢 보유" if score>=72 and r3>=0 else "🟡 관망 / 분할매수" if score>=62 else "🟠 비중축소 검토" if score>=48 else "🔴 매도 / 교체 검토"
+    action="🟢 Strong Hold / Buy More" if score>=82 and r3>5 and r1m>0 else "🟢 Hold" if score>=72 and r3>=0 else "🟡 Watch / Accumulate" if score>=62 else "🟠 Trim Position" if score>=48 else "🔴 Sell / Replace"
     
-    return {**base,"현재가":cur,"5년수익률":round(r5,2),"1년수익률":round(r1,2),"3개월수익률":round(r3,2),"1개월수익률":round(r1m,2),"거래량모멘텀":round(vm,2),"변동성":round(vol,2),"최대낙폭":round(dd,2),"추세점수":int(trend),"점수":score,"판단":action,"시장추정단가":round(est_market_price)}
+    return {**base,"Current Price":cur,"5Y Return":round(r5,2),"1Y Return":round(r1,2),"3M Return":round(r3,2),"1M Return":round(r1m,2),"Vol Momentum":round(vm,2),"Volatility":round(vol,2),"Max Drawdown":round(dd,2),"Trend Score":int(trend),"Score":score,"Action":action,"Est. Market Price":round(est_market_price)}
 
 @st.cache_data(ttl=1800,show_spinner=False)
 def news(name,limit=5):
@@ -144,7 +144,7 @@ def news(name,limit=5):
                     if z not in out:out.append(z)
                 if len(out)>=limit:break
     except Exception:pass
-    return out or ["최근 관련 뉴스를 불러오지 못했습니다."]
+    return out or ["Failed to fetch recent news."]
 
 NAME_TO_CODE={n:c for c,n,_ in FALLBACK}
 
@@ -155,40 +155,40 @@ def resolve(name,u):
     return (NAME_TO_CODE[name.strip()],0,0) if name.strip() in NAME_TO_CODE else (None,0,0)
 
 def outlook(df):
-    a=df.점수.mean(); r3=df["3개월수익률"].mean(); r1=df["1개월수익률"].mean()
-    hot=(df.점수>=75).mean()*100; pos=(df["3개월수익률"]>0).mean()*100
+    a=df["Score"].mean(); r3=df["3M Return"].mean(); r1=df["1M Return"].mean()
+    hot=(df["Score"]>=75).mean()*100; pos=(df["3M Return"]>0).mean()*100
     p=sum([a>=70,r3>5,r1>2,hot>=30,pos>=60])-sum([a<50,r3<-5,r1<-2,hot<10,pos<40])
-    label="🟢 강한 상승 국면" if p>=4 else "🟢 완만한 상승 국면" if p>=2 else "🔴 강한 약세 국면" if p<=-4 else "🟠 약세/방어 국면" if p<=-2 else "🟡 중립/혼조 국면"
-    return label,f"평균점수 {a:.1f}, 평균 3개월 {r3:.1f}%, 평균 1개월 {r1:.1f}%, HOT 비중 {hot:.1f}%, 3개월 상승종목 비중 {pos:.1f}%를 종합한 기술적 판단입니다."
+    label="🟢 Strong Bull" if p>=4 else "🟢 Mild Bull" if p>=2 else "🔴 Strong Bear" if p<=-4 else "🟠 Bear/Defensive" if p<=-2 else "🟡 Neutral/Mixed"
+    return label,f"Avg Score {a:.1f}, Avg 3M {r3:.1f}%, Avg 1M {r1:.1f}%, HOT ratio {hot:.1f}%, Positive 3M ratio {pos:.1f}%"
 
 st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.2</h1>",unsafe_allow_html=True)
-st.caption("🔥 종합 기술적 랭킹 기반 종목 발굴 · 퀵 뷰 분석 추가 · 영구 포트폴리오")
+st.caption("🔥 Technical Ranking Screening · Quick View · Auto 50:50 Color Scale · Persistent Portfolio")
 
 with st.sidebar:
-    st.header("⚙️ 분석 설정")
-    st.markdown("**🔍 기술적 랭킹 스크리닝**")
+    st.header("⚙️ Analysis Settings")
+    st.markdown("**🔍 Technical Ranking Screening**")
     
-    pool_size = st.slider("1차 탐색 후보군 수 (시총 상위)", 50, 300, 150, 50, help="백그라운드에서 분석할 대상입니다. 클수록 시간이 더 소요됩니다.")
-    n = st.slider("최종 분석 표시 종목 (점수 상위)", 20, 100, 50, 10, help="탐색 후보군 중에서 기술적 점수가 가장 높은 알짜 종목만 화면에 표시합니다.")
+    pool_size = st.slider("Initial Scan Pool (Top Market Cap)", 50, 300, 150, 50)
+    n = st.slider("Final Displayed Stocks (Top Score)", 20, 100, 50, 10)
     
     st.divider()
-    workers = st.slider("동시 요청 수 (속도 조절)", 2, 8, 5)
-    cap = st.number_input("최소 시가총액(조원)", 0.0, 100.0, 1.0, 1.0)
+    workers = st.slider("Concurrent Requests (Speed)", 2, 8, 5)
+    cap = st.number_input("Min Market Cap (Trillion KRW)", 0.0, 100.0, 1.0, 1.0)
     
-    if st.button("🔄 캐시 초기화", use_container_width=True):
+    if st.button("🔄 Clear Cache", use_container_width=True):
         st.cache_data.clear(); st.rerun()
 
 if "portfolio_data" not in st.session_state:
     st.session_state.portfolio_data = pd.DataFrame([
-        {"종목명": "두산로보틱스", "수량": 100, "평균매수가": 50000},
-        {"종목명": "한화오션", "수량": 50, "평균매수가": 80000},
-        {"종목명": "테스", "수량": 0, "평균매수가": 0},
-        {"종목명": "에스에이엠티", "수량": 0, "평균매수가": 0}
+        {"Stock Name": "두산로보틱스", "Quantity": 100, "Avg Price": 50000},
+        {"Stock Name": "한화오션", "Quantity": 50, "Avg Price": 80000},
+        {"Stock Name": "테스", "Quantity": 0, "Avg Price": 0},
+        {"Stock Name": "에스에이엠티", "Quantity": 0, "Avg Price": 0}
     ])
 
 with st.form("portfolio_form"):
-    st.markdown("### 💼 내 포트폴리오 입력")
-    st.caption("표 안의 셀을 클릭해 수정하세요. 탭을 이동해도 내역이 날아가지 않습니다.")
+    st.markdown("### 💼 My Portfolio Input")
+    st.caption("Click cells to edit. Add new stocks at the bottom empty row. Navigation won't lose your data.")
     
     edited_df = st.data_editor(
         st.session_state.portfolio_data,
@@ -198,16 +198,16 @@ with st.form("portfolio_form"):
         key="portfolio_editor_ui"
     )
     
-    run = st.form_submit_button("🗺️ PRO 시장 분석 시작", use_container_width=True, type="primary")
+    run = st.form_submit_button("🗺️ Start PRO Market Analysis", use_container_width=True, type="primary")
 
 if run:
     st.session_state.portfolio_data = edited_df.copy()
-    ps = edited_df.dropna(subset=["종목명"]).to_dict(orient="records")
-    ps = [p for p in ps if str(p.get("종목명", "")).strip() != ""]
+    ps = edited_df.dropna(subset=["Stock Name"]).to_dict(orient="records")
+    ps = [p for p in ps if str(p.get("Stock Name", "")).strip() != ""]
 
     u, fallback, errs = load_universe()
     if fallback:
-        st.warning("⚠️ KRX 종목목록 조회 실패로 내장 핵심 종목 Universe를 사용합니다.")
+        st.warning("⚠️ KRX failed to load. Using built-in fallback universe.")
             
     c = u[pd.to_numeric(u.Marcap, errors="coerce").fillna(0) >= cap*1e12].head(pool_size)
     jobs = {}
@@ -215,8 +215,8 @@ if run:
         jobs[str(r.Code).zfill(6)] = (str(r.Name), float(r.Marcap or 0), float(r.Volume or 0))
         
     for p in ps:
-        code, m, v = resolve(p["종목명"], u)
-        if code: jobs[code] = (p["종목명"], m, v)
+        code, m, v = resolve(p["Stock Name"], u)
+        if code: jobs[code] = (p["Stock Name"], m, v)
         
     results = []; bar = st.progress(0)
     with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -227,129 +227,127 @@ if run:
             bar.progress(i / max(1, len(fs)))
     bar.empty(); df = pd.DataFrame(results)
     
-    if df.empty: st.error("가격 데이터를 불러오지 못했습니다."); st.stop()
+    if df.empty: st.error("Failed to load price data."); st.stop()
     
     p_rows = []
     for p in ps:
-        code, _, _ = resolve(p["종목명"], u)
-        m = df[df.종목코드 == code]
+        code, _, _ = resolve(p["Stock Name"], u)
+        m = df[df.Code == code]
         if m.empty: continue
         r = m.iloc[0].to_dict()
-        q = float(p.get("수량", 0))
-        a = float(p.get("평균매수가", 0))
-        cur = r["현재가"]
+        q = float(p.get("Quantity", 0))
+        a = float(p.get("Avg Price", 0))
+        cur = r["Current Price"]
         r.update({
-            "수량": q, "평균매수가": a, "평가금액": cur*q, "매입금액": a*q,
-            "평가손익": cur*q - a*q, "수익률": ((cur/a - 1)*100 if a>0 else np.nan),
-            "보유종목": True
+            "Quantity": q, "Avg Price": a, "Valuation": cur*q, "Total Cost": a*q,
+            "Total PnL": cur*q - a*q, "Total Return": ((cur/a - 1)*100 if a>0 else np.nan),
+            "Owned": True
         })
         p_rows.append(r)
         
-    df["보유종목"] = df.종목명.isin([r["종목명"] for r in p_rows])
+    df["Owned"] = df["Stock Name"].isin([r["Stock Name"] for r in p_rows])
     
-    df_others = df[~df["보유종목"]].sort_values(["점수", "3개월수익률"], ascending=False).head(n)
-    df_port = df[df["보유종목"]]
+    df_others = df[~df["Owned"]].sort_values(["Score", "3M Return"], ascending=False).head(n)
+    df_port = df[df["Owned"]]
     
-    df = pd.concat([df_port, df_others]).sort_values(["점수", "3개월수익률"], ascending=False).reset_index(drop=True)
+    df = pd.concat([df_port, df_others]).sort_values(["Score", "3M Return"], ascending=False).reset_index(drop=True)
     
     st.session_state.update(market_results=df, portfolio_results=pd.DataFrame(p_rows), analysis_complete=True, fallback_mode=fallback)
 
 if st.session_state.get("analysis_complete"):
     df = st.session_state.market_results; pf = st.session_state.portfolio_results
     ol, why = outlook(df)
-    st.markdown("## 🧠 AI 시장 전망")
-    a, b, c, d = st.columns(4); a.metric("시장 국면", ol); b.metric("선별평균점수", f"{df.점수.mean():.1f}"); c.metric("평균 3개월", f"{df['3개월수익률'].mean():.1f}%"); d.metric("평균 1개월", f"{df['1개월수익률'].mean():.1f}%")
+    st.markdown("## 🧠 AI Market Outlook")
+    a, b, c, d = st.columns(4); a.metric("Market Phase", ol); b.metric("Avg Score", f"{df['Score'].mean():.1f}"); c.metric("Avg 3M Return", f"{df['3M Return'].mean():.1f}%"); d.metric("Avg 1M Return", f"{df['1M Return'].mean():.1f}%")
     st.info(why)
-    top = df.iloc[0]; st.markdown("## 🏆 랭킹 TOP PICK")
-    a, b, c, d, e = st.columns(5); a.metric("종목", top.종목명); b.metric("섹터", top.섹터); c.metric("점수", f"{top.점수}점"); d.metric("3개월", f"{top['3개월수익률']:.1f}%"); e.metric("판단", top.판단)
-    t1, t2, t3, t4, t5 = st.tabs(["🗺️ 시장맵", "🔥 섹터", "💼 포트폴리오", "🔍 상세", "🏆 순위"])
+    top = df.iloc[0]; st.markdown("## 🏆 Ranking TOP PICK")
+    a, b, c, d, e = st.columns(5); a.metric("Stock", top["Stock Name"]); b.metric("Sector", top["Sector"]); c.metric("Score", f"{top['Score']} pts"); d.metric("3M Return", f"{top['3M Return']:.1f}%"); e.metric("Action", top["Action"])
+    t1, t2, t3, t4, t5 = st.tabs(["🗺️ Market Map", "🔥 Sectors", "💼 Portfolio", "🔍 Details", "🏆 Ranking"])
     
     with t1:
         x = df.copy()
-        x["시장"] = "KOSPI/KOSDAQ"
-        x["표시명"] = x.apply(lambda r: "📌 "+r.종목명 if r.보유종목 else r.종목명, axis=1)
-        x["유망도"] = pd.to_numeric(x["점수"], errors="coerce").clip(0, 100)
-        x["유망도크기"] = (x["유망도"] + 1) ** 2
+        x["Market"] = "KOSPI/KOSDAQ"
+        x["Display Name"] = x.apply(lambda r: "📌 "+r["Stock Name"] if r["Owned"] else r["Stock Name"], axis=1)
+        x["Prospect"] = pd.to_numeric(x["Score"], errors="coerce").clip(0, 100)
+        x["Prospect Size"] = (x["Prospect"] + 1) ** 2
 
-        median_score = x["유망도"].median()
-        max_diff = max(x["유망도"].max() - median_score, median_score - x["유망도"].min())
+        median_score = x["Prospect"].median()
+        max_diff = max(x["Prospect"].max() - median_score, median_score - x["Prospect"].min())
         if max_diff == 0: max_diff = 1 
         dynamic_range = [median_score - max_diff, median_score + max_diff]
 
         fig = px.treemap(
-            x, path=["시장", "섹터", "표시명"], values="유망도크기", color="유망도",
+            x, path=["Market", "Sector", "Display Name"], values="Prospect Size", color="Prospect",
             color_continuous_scale=COLOR_SCALE, 
             range_color=dynamic_range, 
-            custom_data=["유망도", "3개월수익률", "1개월수익률", "판단"]
+            custom_data=["Prospect", "3M Return", "1M Return", "Action"]
         )
         fig.update_layout(height=700, margin=dict(t=10,l=10,r=10,b=10), coloraxis_showscale=True)
         fig.update_traces(
             textinfo="label",
             hovertemplate=(
-                "<b>%{label}</b><br>유망도: %{customdata[0]}점<br>"
-                "3개월 수익률: %{customdata[1]:.1f}%<br>1개월 수익률: %{customdata[2]:.1f}%<br>"
+                "<b>%{label}</b><br>Score: %{customdata[0]}<br>"
+                "3M Return: %{customdata[1]:.1f}%<br>1M Return: %{customdata[2]:.1f}%<br>"
                 "%{customdata[3]}<extra></extra>"
             )
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"📌 박스 크기 = 유망도 · 색상 범위: 현재 선별된 종목들의 중간값({median_score:.1f}점) 기준 상위 50% 빨간색, 하위 50% 파란색 자동 보정")
+        st.caption(f"📌 Box Size = Prospect Score · Color Range: Auto-adjusted based on median score ({median_score:.1f} pts) - Top 50% Red, Bottom 50% Blue")
         
-        # [v4.2 업데이트] 시장맵 아래에 퀵 뷰(Quick View) 영역 추가
         st.divider()
-        st.markdown("### 🖱️ 종목 퀵 뷰 (Quick View)")
-        sel_quick = st.selectbox("시장맵에서 관심 있는 종목을 선택해 즉시 상세 데이터를 확인하세요:", ["(선택 안 함)"] + df.종목명.tolist())
+        st.markdown("### 🖱️ Stock Quick View")
+        sel_quick = st.selectbox("Select a stock from the map to see instant details:", ["(None Selected)"] + df["Stock Name"].tolist())
         
-        if sel_quick != "(선택 안 함)":
-            r_quick = df[df.종목명 == sel_quick].iloc[0]
+        if sel_quick != "(None Selected)":
+            r_quick = df[df["Stock Name"] == sel_quick].iloc[0]
             
-            # 분석 이유 로직 생성
             reasons = []
-            if r_quick.추세점수 >= 70: reasons.append("✅ **추세 강세:** 20일/60일/120일 주요 이동평균선을 모두 넘어서며 강력한 우상향 추세를 보이고 있습니다.")
-            elif r_quick.추세점수 >= 35: reasons.append("⚠️ **추세 중립:** 하락세에서 벗어나 단기 이동평균선을 회복 중이나, 확실한 상승 전환 확인이 필요합니다.")
-            else: reasons.append("🚨 **추세 약세:** 주요 이동평균선 아래에 머물러 있어 추세가 꺾인 상태입니다.")
+            if r_quick["Trend Score"] >= 70: reasons.append("✅ **Trend Bullish:** Breaking above 20/60/120-day moving averages with strong upward momentum.")
+            elif r_quick["Trend Score"] >= 35: reasons.append("⚠️ **Trend Neutral:** Recovering short-term MAs but needs confirmation for a solid trend reversal.")
+            else: reasons.append("🚨 **Trend Bearish:** Trending below major moving averages.")
             
-            if r_quick['3개월수익률'] > 15: reasons.append(f"✅ **수익률 모멘텀:** 최근 3개월간 {r_quick['3개월수익률']:.1f}% 상승하여 단기 자금이 강하게 몰려있습니다.")
-            elif r_quick['3개월수익률'] < -10: reasons.append(f"🚨 **단기 조정:** 최근 3개월간 {r_quick['3개월수익률']:.1f}% 하락하며 시장의 관심에서 멀어진 상태입니다.")
+            if r_quick['3M Return'] > 15: reasons.append(f"✅ **Return Momentum:** Surged {r_quick['3M Return']:.1f}% over the last 3 months, attracting strong capital.")
+            elif r_quick['3M Return'] < -10: reasons.append(f"🚨 **Short-term Correction:** Dropped {r_quick['3M Return']:.1f}% over the last 3 months, losing market attention.")
             
-            if r_quick.거래량모멘텀 > 20: reasons.append(f"✅ **수급 폭발:** 평소 대비 거래량이 {r_quick.거래량모멘텀:.1f}% 급증하여 새로운 모멘텀이나 이슈가 발생했을 가능성이 높습니다.")
+            if r_quick["Vol Momentum"] > 20: reasons.append(f"✅ **Volume Spike:** Volume increased by {r_quick['Vol Momentum']:.1f}% compared to average, indicating potential new catalysts.")
             
             st.info("\n\n".join(reasons))
             
             col_chart, col_news = st.columns([2, 1])
             with col_chart:
-                st.markdown("**📈 최근 100일 주가 흐름**")
-                if isinstance(r_quick.차트, pd.DataFrame) and not r_quick.차트.empty:
-                    st.line_chart(r_quick.차트[["Close"]].rename(columns={"Close": "종가"}), use_container_width=True)
+                st.markdown("**📈 Last 100 Days Price Trend**")
+                if isinstance(r_quick["Chart"], pd.DataFrame) and not r_quick["Chart"].empty:
+                    st.line_chart(r_quick["Chart"][["Close"]].rename(columns={"Close": "Price"}), use_container_width=True)
             with col_news:
-                st.markdown("**📰 최근 뉴스**")
+                st.markdown("**📰 Recent News**")
                 for i, z in enumerate(news(sel_quick, 5), 1):
                     st.markdown(f"- {z}")
     
     with t2:
-        s = df.groupby("섹터").agg(평균점수=("점수","mean"), 평균1개월=("1개월수익률","mean"), 평균3개월=("3개월수익률","mean"), 평균1년=("1년수익률","mean"), 종목수=("종목명","count")).reset_index().sort_values("평균점수", ascending=False)
-        fig = px.bar(s.sort_values("평균점수"), x="평균점수", y="섹터", orientation="h", text="평균점수", color="평균점수", color_continuous_scale=COLOR_SCALE, range_color=dynamic_range)
+        s = df.groupby("Sector").agg(Avg_Score=("Score","mean"), Avg_1M=("1M Return","mean"), Avg_3M=("3M Return","mean"), Avg_1Y=("1Y Return","mean"), Count=("Stock Name","count")).reset_index().sort_values("Avg_Score", ascending=False)
+        fig = px.bar(s.sort_values("Avg_Score"), x="Avg_Score", y="Sector", orientation="h", text="Avg_Score", color="Avg_Score", color_continuous_scale=COLOR_SCALE, range_color=dynamic_range)
         fig.update_traces(texttemplate='%{text:.1f}')
         fig.update_layout(height=600, coloraxis_showscale=False); st.plotly_chart(fig, use_container_width=True); st.dataframe(s.round(1), use_container_width=True, hide_index=True)
     
     with t3:
-        if pf.empty: st.warning("보유종목이 없습니다.")
+        if pf.empty: st.warning("No portfolio data.")
         else:
-            ev = pf.평가금액.sum(); cost = pf.매입금액.sum(); pnl = ev - cost
-            a, b, c, d = st.columns(4); a.metric("평가금액", f"{ev:,.0f}원"); b.metric("매입금액", f"{cost:,.0f}원"); c.metric("평가손익", f"{pnl:,.0f}원"); d.metric("총수익률", f"{(ev/cost-1)*100:.2f}%" if cost>0 else "-")
-            cols = ["종목명", "현재가", "수량", "평균매수가", "시장추정단가", "평가금액", "평가손익", "수익률", "점수", "판단", "3개월수익률"]
+            ev = pf["Valuation"].sum(); cost = pf["Total Cost"].sum(); pnl = ev - cost
+            a, b, c, d = st.columns(4); a.metric("Total Valuation", f"{ev:,.0f} KRW"); b.metric("Total Cost", f"{cost:,.0f} KRW"); c.metric("Total PnL", f"{pnl:,.0f} KRW"); d.metric("Total Return", f"{(ev/cost-1)*100:.2f}%" if cost>0 else "-")
+            cols = ["Stock Name", "Current Price", "Quantity", "Avg Price", "Est. Market Price", "Valuation", "Total PnL", "Total Return", "Score", "Action", "3M Return"]
             st.dataframe(pf[cols].round(2), use_container_width=True, hide_index=True)
-            st.caption("※ **시장추정단가**: 최근 60일(약 3개월) 이동평균선 가격입니다.")
+            st.caption("※ **Est. Market Price**: 60-day moving average price. Use it to compare your average price with the recent market participants.")
     
     with t4:
-        sel = st.selectbox("종목 상세 검색", df.종목명.tolist()); r = df[df.종목명==sel].iloc[0]
-        a, b, c, d, e = st.columns(5); a.metric("점수", f"{r.점수}"); b.metric("현재가", f"{r.현재가:,.0f}원"); c.metric("1개월", f"{r['1개월수익률']:.1f}%"); d.metric("3개월", f"{r['3개월수익률']:.1f}%"); e.metric("판단", r.판단)
-        a, b, c, d = st.columns(4); a.metric("1년", f"{r['1년수익률']:.1f}%"); b.metric("시장추정단가", f"{r['시장추정단가']:,.0f}원"); c.metric("추세", f"{r.추세점수}/100"); d.metric("최대낙폭", f"{r.최대낙폭:.1f}%")
-        if isinstance(r.차트, pd.DataFrame) and not r.차트.empty: st.line_chart(r.차트[["Close"]].rename(columns={"Close":"종가"}), use_container_width=True)
-        st.markdown("### 📰 최근 뉴스")
+        sel = st.selectbox("Search Stock Details", df["Stock Name"].tolist()); r = df[df["Stock Name"]==sel].iloc[0]
+        a, b, c, d, e = st.columns(5); a.metric("Score", f"{r['Score']}"); b.metric("Current Price", f"{r['Current Price']:,.0f}"); c.metric("1M Return", f"{r['1M Return']:.1f}%"); d.metric("3M Return", f"{r['3M Return']:.1f}%"); e.metric("Action", r["Action"])
+        a, b, c, d = st.columns(4); a.metric("1Y Return", f"{r['1Y Return']:.1f}%"); b.metric("Est. Market Price", f"{r['Est. Market Price']:,.0f}"); c.metric("Trend Score", f"{r['Trend Score']}/100"); d.metric("Max Drawdown", f"{r['Max Drawdown']:.1f}%")
+        if isinstance(r["Chart"], pd.DataFrame) and not r["Chart"].empty: st.line_chart(r["Chart"][["Close"]].rename(columns={"Close":"Price"}), use_container_width=True)
+        st.markdown("### 📰 Recent News")
         for i, z in enumerate(news(sel, 5), 1): st.markdown(f"**{i}.** {z}")
     
     with t5:
-        cols = ["종목명", "섹터", "점수", "판단", "현재가", "시장추정단가", "5년수익률", "1년수익률", "3개월수익률", "1개월수익률", "거래량모멘텀", "최대낙폭"]
-        q = df[cols].copy(); q.insert(0, "순위", range(1, len(q)+1)); st.dataframe(q, use_container_width=True, hide_index=True)
+        cols = ["Stock Name", "Sector", "Score", "Action", "Current Price", "Est. Market Price", "5Y Return", "1Y Return", "3M Return", "1M Return", "Vol Momentum", "Max Drawdown"]
+        q = df[cols].copy(); q.insert(0, "Rank", range(1, len(q)+1)); st.dataframe(q, use_container_width=True, hide_index=True)
 else:
-    st.info("👆 **PRO 시장 분석 시작**을 누르세요.")
+    st.info("👆 Click **Start PRO Market Analysis** to begin.")
