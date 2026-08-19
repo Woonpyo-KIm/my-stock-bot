@@ -34,19 +34,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# [2] 백엔드 로직 (12대 섹터 및 데이터 수집)
+# [2] 백엔드 로직 
 # -------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def load_universe():
     df_krx = fdr.StockListing('KRX')
-    # 다양한 섹터가 잡히도록 시총 상위 40개 우량주로 확대
     candidates = df_krx[df_krx['Marcap'] >= 1000000000000].sort_values(by='Marcap', ascending=False).head(40)
     return candidates, df_krx
 
 def get_growth_and_chart(stock_code):
     end_date = datetime.date.today()
     start_date_5y = end_date - datetime.timedelta(days=365 * 5)
-    start_date_3m = end_date - datetime.timedelta(days=90) # 차트용 3개월 데이터
+    start_date_3m = end_date - datetime.timedelta(days=90)
     
     try:
         df = fdr.DataReader(stock_code, start_date_5y, end_date)
@@ -79,7 +78,6 @@ def get_robust_news(stock_name, limit=3):
     while len(news_list) < limit: news_list.append("-")
     return news_list[:limit]
 
-# 💡 [핵심] 유망~침체까지 12개 섹터 총망라
 SECTORS = {
     "⚡ AI/반도체": ["AI", "반도체", "HBM", "테스", "에스에이엠티", "SK하이닉스", "삼성전자", "한미반도체"],
     "🤖 로봇/자동화": ["로봇", "자동화", "스마트팩토리", "두산로보틱스", "레인보우로보틱스"],
@@ -96,7 +94,6 @@ SECTORS = {
 }
 
 def evaluate_stock(stock_name, return_5y, return_1y):
-    # 철저히 실제 모멘텀(수익률)을 기반으로 점수를 매겨 빨간색과 파란색을 구분
     score = 50
     matched_sector = "기타 우량주"
 
@@ -126,20 +123,20 @@ with st.container(border=True):
 
 if st.button("🗺️ 시장 지도 그리기 및 분석 시작", use_container_width=True, type="primary"):
     
-    with st.spinner("12대 섹터 데이터 분류 및 트리맵 렌더링 중..."):
+    with st.spinner("12대 섹터 데이터 분류 및 시가총액 기반 트리맵 렌더링 중..."):
         candidates, df_krx = load_universe()
         
         # 1. 시장 추천주 평가
         eval_results = []
         for idx, row in enumerate(candidates.iterrows()):
             _, r = row
-            code, name, vol = r['Code'], r['Name'], r['Volume']
+            code, name, vol, marcap = r['Code'], r['Name'], r['Volume'], r['Marcap']
             r5y, r1y, df_chart = get_growth_and_chart(code)
             score, sector = evaluate_stock(name, r5y, r1y)
             
             eval_results.append({
                 '종목명': name, '종목코드': code, '섹터': sector, '점수': score, 
-                '거래량': vol, '5년성장': r5y, '1년성장': r1y, '차트': df_chart
+                '거래량': vol, '시가총액': marcap, '5년성장': r5y, '1년성장': r1y, '차트': df_chart
             })
             
         result_df = pd.DataFrame(eval_results).sort_values(by='점수', ascending=False)
@@ -153,16 +150,15 @@ if st.button("🗺️ 시장 지도 그리기 및 분석 시작", use_container_
             stock_info = df_krx[df_krx['Name'] == my_stock]
             if stock_info.empty: continue
                 
-            code, vol = stock_info.iloc[0]['Code'], stock_info.iloc[0]['Volume']
+            code, vol, marcap = stock_info.iloc[0]['Code'], stock_info.iloc[0]['Volume'], stock_info.iloc[0]['Marcap']
             r5y, r1y, df_chart = get_growth_and_chart(code)
             my_score, sector = evaluate_stock(my_stock, r5y, r1y)
                 
             my_results.append({
                 "종목명": my_stock, "종목코드": code, "섹터": sector, "점수": my_score, 
-                "거래량": vol, "5년성장": r5y, "차트": df_chart
+                "거래량": vol, "시가총액": marcap, "5년성장": r5y, "차트": df_chart
             })
             
-        # 데이터를 세션에 저장 (상세 조회용)
         st.session_state['all_stocks'] = eval_results + my_results
 
     # -------------------------------------------------------------------
@@ -172,49 +168,58 @@ if st.button("🗺️ 시장 지도 그리기 및 분석 시작", use_container_
     
     with tab_map:
         st.markdown("### 📊 실시간 한국 증시 섹터 맵")
-        st.caption("🔴 유망/상승(Hot) 섹터 ↔ 🔵 소외/하락(Cold) 섹터")
+        st.caption("🔴 유망/상승(Hot) ↔ 🔵 소외/하락(Cold) | 상자의 크기는 '시가총액' 비중입니다.")
         
         treemap_data = []
         for res in st.session_state['all_stocks']:
             display_name = f"📌 {res['종목명']}" if res['종목명'] in my_portfolio else res['종목명']
-            # 중복 추가 방지
+            
+            # [수정포인트] 상자 크기를 시가총액(Marcap) 기준으로 반영
             if not any(res['종목명'] in d['표시명'] for d in treemap_data):
-                treemap_data.append({'섹터': res['섹터'], '표시명': display_name, '점수': res['점수'], '크기': 1})
+                treemap_data.append({
+                    '섹터': res['섹터'], 
+                    '표시명': display_name, 
+                    '점수': res['점수'], 
+                    '크기': res['시가총액'] # <--- 시가총액 반영
+                })
 
         df_tree = pd.DataFrame(treemap_data)
         df_tree['전체시장'] = "KOSPI / KOSDAQ"
 
         fig = px.treemap(
             df_tree, path=['전체시장', '섹터', '표시명'], values='크기', color='점수',
-            color_continuous_scale=['#0b486b', '#3b8d99', '#cccccc', '#f56217', '#ff0000'], # 네이버 파란색~빨간색
+            color_continuous_scale=['#0b486b', '#3b8d99', '#cccccc', '#f56217', '#ff0000'],
             range_color=[30, 85]
         )
         fig.update_layout(margin=dict(t=10, l=10, r=10, b=10), coloraxis_showscale=False)
-        fig.update_traces(textinfo="label+value", textfont=dict(size=14, color="white"), hoverinfo="label+value")
+        
+        # [수정포인트] 이름 밑에 뜨던 의미 없는 숫자(1)를 지우고 이름(label)만 깔끔하게 출력
+        fig.update_traces(
+            textinfo="label", 
+            textfont=dict(size=15, color="white"), 
+            hoverinfo="label+value"
+        )
         
         st.plotly_chart(fig, use_container_width=True)
 
     with tab_detail:
         st.markdown("### 📈 종목 상세 정보 조회")
-        st.caption("트리맵에서 확인한 종목을 선택하면 차트와 뉴스를 볼 수 있습니다.")
+        st.caption("트리맵에서 위치를 확인한 후 궁금한 종목을 선택해 보세요.")
         
         if 'all_stocks' in st.session_state:
-            # 셀렉트박스로 종목 검색 및 선택
             stock_names = list(set([s['종목명'] for s in st.session_state['all_stocks']]))
             selected_name = st.selectbox("👉 분석할 종목을 선택하세요:", stock_names)
             
-            # 선택된 종목 데이터 필터링
             selected_data = next((item for item in st.session_state['all_stocks'] if item["종목명"] == selected_name), None)
             
             if selected_data:
-                # 최신 뉴스 실시간 로드
                 with st.spinner("최신 뉴스 수집 중..."):
                     news_list = get_robust_news(selected_name, 3)
                 
                 with st.container(border=True):
                     col1, col2, col3 = st.columns([1, 1, 1])
                     col1.metric("종목명", selected_name)
-                    col2.metric("섹터 / 평가 점수", f"{selected_data['섹터']} ({selected_data['점수']}점)")
+                    col2.metric("소속 섹터", selected_data['섹터'])
                     col3.metric("오늘 거래량", f"{selected_data['거래량']:,} 주")
                     
                     st.markdown("#### 📉 최근 3개월 주가 흐름")
