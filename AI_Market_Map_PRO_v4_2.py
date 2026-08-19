@@ -162,7 +162,7 @@ def outlook(df):
     return label,f"평균점수 {a:.1f}, 평균 3개월 {r3:.1f}%, 평균 1개월 {r1:.1f}%, HOT 비중 {hot:.1f}%, 3개월 상승종목 비중 {pos:.1f}%를 종합한 기술적 판단입니다."
 
 st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.2</h1>",unsafe_allow_html=True)
-st.caption("🔥 종합 기술적 랭킹 기반 종목 발굴 · 영구 포트폴리오 · 자동 50:50 컬러 스케일")
+st.caption("🔥 종합 기술적 랭킹 기반 종목 발굴 · 퀵 뷰 분석 추가 · 영구 포트폴리오")
 
 with st.sidebar:
     st.header("⚙️ 분석 설정")
@@ -293,14 +293,42 @@ if st.session_state.get("analysis_complete"):
         )
         st.plotly_chart(fig, use_container_width=True)
         st.caption(f"📌 박스 크기 = 유망도 · 색상 범위: 현재 선별된 종목들의 중간값({median_score:.1f}점) 기준 상위 50% 빨간색, 하위 50% 파란색 자동 보정")
+        
+        # [v4.2 업데이트] 시장맵 아래에 퀵 뷰(Quick View) 영역 추가
+        st.divider()
+        st.markdown("### 🖱️ 종목 퀵 뷰 (Quick View)")
+        sel_quick = st.selectbox("시장맵에서 관심 있는 종목을 선택해 즉시 상세 데이터를 확인하세요:", ["(선택 안 함)"] + df.종목명.tolist())
+        
+        if sel_quick != "(선택 안 함)":
+            r_quick = df[df.종목명 == sel_quick].iloc[0]
+            
+            # 분석 이유 로직 생성
+            reasons = []
+            if r_quick.추세점수 >= 70: reasons.append("✅ **추세 강세:** 20일/60일/120일 주요 이동평균선을 모두 넘어서며 강력한 우상향 추세를 보이고 있습니다.")
+            elif r_quick.추세점수 >= 35: reasons.append("⚠️ **추세 중립:** 하락세에서 벗어나 단기 이동평균선을 회복 중이나, 확실한 상승 전환 확인이 필요합니다.")
+            else: reasons.append("🚨 **추세 약세:** 주요 이동평균선 아래에 머물러 있어 추세가 꺾인 상태입니다.")
+            
+            if r_quick['3개월수익률'] > 15: reasons.append(f"✅ **수익률 모멘텀:** 최근 3개월간 {r_quick['3개월수익률']:.1f}% 상승하여 단기 자금이 강하게 몰려있습니다.")
+            elif r_quick['3개월수익률'] < -10: reasons.append(f"🚨 **단기 조정:** 최근 3개월간 {r_quick['3개월수익률']:.1f}% 하락하며 시장의 관심에서 멀어진 상태입니다.")
+            
+            if r_quick.거래량모멘텀 > 20: reasons.append(f"✅ **수급 폭발:** 평소 대비 거래량이 {r_quick.거래량모멘텀:.1f}% 급증하여 새로운 모멘텀이나 이슈가 발생했을 가능성이 높습니다.")
+            
+            st.info("\n\n".join(reasons))
+            
+            col_chart, col_news = st.columns([2, 1])
+            with col_chart:
+                st.markdown("**📈 최근 100일 주가 흐름**")
+                if isinstance(r_quick.차트, pd.DataFrame) and not r_quick.차트.empty:
+                    st.line_chart(r_quick.차트[["Close"]].rename(columns={"Close": "종가"}), use_container_width=True)
+            with col_news:
+                st.markdown("**📰 최근 뉴스**")
+                for i, z in enumerate(news(sel_quick, 5), 1):
+                    st.markdown(f"- {z}")
     
     with t2:
         s = df.groupby("섹터").agg(평균점수=("점수","mean"), 평균1개월=("1개월수익률","mean"), 평균3개월=("3개월수익률","mean"), 평균1년=("1년수익률","mean"), 종목수=("종목명","count")).reset_index().sort_values("평균점수", ascending=False)
         fig = px.bar(s.sort_values("평균점수"), x="평균점수", y="섹터", orientation="h", text="평균점수", color="평균점수", color_continuous_scale=COLOR_SCALE, range_color=dynamic_range)
-        
-        # [수정] Bar 차트의 text 값을 소수점 1자리로 강제 지정
         fig.update_traces(texttemplate='%{text:.1f}')
-        
         fig.update_layout(height=600, coloraxis_showscale=False); st.plotly_chart(fig, use_container_width=True); st.dataframe(s.round(1), use_container_width=True, hide_index=True)
     
     with t3:
@@ -313,7 +341,7 @@ if st.session_state.get("analysis_complete"):
             st.caption("※ **시장추정단가**: 최근 60일(약 3개월) 이동평균선 가격입니다.")
     
     with t4:
-        sel = st.selectbox("종목", df.종목명.tolist()); r = df[df.종목명==sel].iloc[0]
+        sel = st.selectbox("종목 상세 검색", df.종목명.tolist()); r = df[df.종목명==sel].iloc[0]
         a, b, c, d, e = st.columns(5); a.metric("점수", f"{r.점수}"); b.metric("현재가", f"{r.현재가:,.0f}원"); c.metric("1개월", f"{r['1개월수익률']:.1f}%"); d.metric("3개월", f"{r['3개월수익률']:.1f}%"); e.metric("판단", r.판단)
         a, b, c, d = st.columns(4); a.metric("1년", f"{r['1년수익률']:.1f}%"); b.metric("시장추정단가", f"{r['시장추정단가']:,.0f}원"); c.metric("추세", f"{r.추세점수}/100"); d.metric("최대낙폭", f"{r.최대낙폭:.1f}%")
         if isinstance(r.차트, pd.DataFrame) and not r.차트.empty: st.line_chart(r.차트[["Close"]].rename(columns={"Close":"종가"}), use_container_width=True)
