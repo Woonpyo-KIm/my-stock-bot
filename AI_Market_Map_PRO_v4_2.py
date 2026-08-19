@@ -161,7 +161,7 @@ def outlook(df):
     label="🟢 강한 상승 국면" if p>=4 else "🟢 완만한 상승 국면" if p>=2 else "🔴 강한 약세 국면" if p<=-4 else "🟠 약세/방어 국면" if p<=-2 else "🟡 중립/혼조 국면"
     return label,f"평균점수 {a:.1f}, 평균 3개월 {r3:.1f}%, 평균 1개월 {r1:.1f}%, HOT 비중 {hot:.1f}%, 3개월 상승종목 비중 {pos:.1f}%를 종합한 기술적 판단입니다."
 
-st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.3</h1>",unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.2</h1>",unsafe_allow_html=True)
 st.caption("입력값 영구 보존(수정 증발 방지) · 자동 50:50 컬러 스케일 · 시장추정단가 비교")
 
 with st.sidebar:
@@ -184,8 +184,6 @@ with st.form("portfolio_form"):
     st.markdown("### 💼 내 포트폴리오 입력")
     st.caption("표 안의 셀을 클릭해 수정하세요. 새로운 종목은 맨 아래 빈 줄에 추가할 수 있습니다.")
     
-    # [v4.3] 데이터 유지 핵심: key="portfolio_editor_ui" 할당
-    # 이를 통해 사용자가 탭이나 사이드바를 만지더라도 입력 중이던 데이터가 메모리에서 증발하지 않습니다.
     edited_df = st.data_editor(
         st.session_state.portfolio_data,
         num_rows="dynamic",
@@ -197,7 +195,6 @@ with st.form("portfolio_form"):
     run = st.form_submit_button("🗺️ PRO 시장 분석 시작", use_container_width=True, type="primary")
 
 if run:
-    # 분석 시작 버튼을 누르면 그 시점의 데이터로 원본 데이터를 최신화합니다.
     st.session_state.portfolio_data = edited_df.copy()
     ps = edited_df.dropna(subset=["종목명"]).to_dict(orient="records")
     ps = [p for p in ps if str(p.get("종목명", "")).strip() != ""]
