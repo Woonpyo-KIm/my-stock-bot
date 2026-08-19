@@ -5,12 +5,11 @@ import time
 import datetime
 import FinanceDataReader as fdr
 import xml.etree.ElementTree as ET
-import plotly.express as px  # 트리맵 시각화를 위한 라이브러리
 
 # -------------------------------------------------------------------
-# [1] 웹페이지 기본 설정
+# [1] 웹페이지 디자인
 # -------------------------------------------------------------------
-st.set_page_config(page_title="AI 섹터 히트맵 어드바이저", page_icon="🔥", layout="centered")
+st.set_page_config(page_title="AI 메가트렌드 발굴기", page_icon="🗺️", layout="centered")
 
 st.markdown("""
 <style>
@@ -18,7 +17,7 @@ st.markdown("""
         font-size: 2.2rem;
         font-weight: 800;
         text-align: center;
-        background: linear-gradient(45deg, #ff4e50, #f9d423);
+        background: linear-gradient(45deg, #6a11cb, #2575fc);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 0px;
@@ -27,18 +26,28 @@ st.markdown("""
     .sub-title {
         text-align: center;
         color: #666;
-        font-size: 0.95rem;
-        margin-bottom: 1.5rem;
+        font-size: 1rem;
+        margin-bottom: 2rem;
+    }
+    .megatrend-tag {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 5px;
+        background-color: #f1f3f5;
+        color: #0b486b;
+        font-weight: bold;
+        font-size: 0.85rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# [2] 백엔드 데이터 로직
+# [2] 백엔드 로직 (5년 데이터 + 메가트렌드 테마 매칭)
 # -------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def load_universe():
     df_krx = fdr.StockListing('KRX')
+    # 시가총액 1.5조 이상 우량주 중 상위 25개 필터링
     blue_chips = df_krx[df_krx['Marcap'] >= 1500000000000].sort_values(by='Marcap', ascending=False)
     candidates = blue_chips.head(25)
     return candidates, df_krx
@@ -58,10 +67,10 @@ def get_5y_growth_data(stock_code):
         return round(return_5y, 2), round(return_1y, 2)
     except: return 0.0, 0.0
 
-def get_robust_news(stock_name, limit=2):
+def get_robust_news(stock_name, limit=3):
     news_list = []
     try:
-        url = f"https://news.google.com/rss/search?q={stock_name}+주식+성장&hl=ko&gl=KR&ceid=KR:ko"
+        url = f"https://news.google.com/rss/search?q={stock_name}+주식+성장+미래&hl=ko&gl=KR&ceid=KR:ko"
         res = requests.get(url, timeout=2)
         if res.status_code == 200:
             root = ET.fromstring(res.text)
@@ -69,177 +78,144 @@ def get_robust_news(stock_name, limit=2):
                 news_list.append(item.text.replace(' - Yahoo Finance', '').replace(' - Naver', '').strip())
                 if len(news_list) >= limit: break
     except: pass
-    if not news_list: news_list = ["최근 시장 이슈 관망"]
+    if not news_list: news_list = ["최신 뉴스 수집 불가"]
     while len(news_list) < limit: news_list.append("-")
     return news_list[:limit]
 
+# 🗺️ [핵심 업데이트] 미래 로드맵 기반 메가트렌드 딕셔너리
 MEGATRENDS = {
-    "⚡ AI 반도체/인프라": ["AI", "반도체", "HBM", "NPU", "전력", "데이터센터", "메모리", "테스", "에스에이엠티", "SK하이닉스", "삼성전자"],
-    "🤖 로보틱스/자동화": ["로봇", "자동화", "스마트팩토리", "휴머노이드", "두산로보틱스", "레인보우로보틱스"],
-    "🚢 조선/에너지/지정학": ["조선", "방산", "수주", "원전", "SMR", "한화오션", "HD현대중공업", "HD한국조선해양"],
-    "🧬 바이오/헬스케어": ["바이오", "신약", "헬스케어", "의료", "삼성바이오로직스", "셀트리온"],
-    "🚀 미래 모빌리티/우주": ["자율주행", "UAM", "우주", "항공", "배터리", "현대차", "기아", "LG에너지솔루션"]
+    "🤖 로보틱스/자동화 (5년 내)": ["로봇", "자동화", "스마트팩토리", "휴머노이드", "AI로봇", "협동로봇"],
+    "⚡ AI 인프라/반도체 (1~3년 내)": ["AI", "반도체", "HBM", "NPU", "전력", "데이터센터", "인공지능", "메모리"],
+    "🚢 글로벌 인프라/지정학 (1~5년 내)": ["조선", "방산", "수주", "원전", "SMR", "수출", "에너지"],
+    "🧬 바이오/헬스케어 (5~10년 내)": ["바이오", "신약", "헬스케어", "의료", "합성생물학"],
+    "🚀 미래 모빌리티/우주 (10년 내)": ["자율주행", "UAM", "우주", "항공", "배터리"]
 }
 
-def evaluate_stock(stock_name, return_5y, return_1y, news_list):
+def evaluate_megatrend_stock(stock_name, return_5y, return_1y, news_list):
     score = 50
-    matched_sector = "기타 우량주"
+    reasons = []
+    matched_trend = "일반 우량주"
 
-    if return_5y > 50: score += 15
-    elif return_5y < 0: score -= 10
-    if return_1y > 15: score += 10
+    # 1. 5년 & 1년 주가 모멘텀
+    if return_5y > 50: score += 15; reasons.append(f"5년 장기우상향(+{return_5y}%)")
+    elif return_5y < 0: score -= 10; reasons.append(f"장기 추세 둔화")
+    if return_1y > 15: score += 10; reasons.append(f"단기 모멘텀 강세")
 
-    search_text = stock_name + " " + " ".join(news_list)
-    sector_scores = {sec: 0 for sec in MEGATRENDS}
+    # 2. 미래 메가트렌드 매칭 및 가점
+    trend_scores = {trend: 0 for trend in MEGATRENDS}
     
-    for sec, keywords in MEGATRENDS.items():
+    # 종목명이나 뉴스에 트렌드 키워드가 있는지 검사
+    search_text = stock_name + " " + " ".join(news_list)
+    
+    for trend, keywords in MEGATRENDS.items():
         for kw in keywords:
             if kw in search_text:
-                sector_scores[sec] += 1
+                trend_scores[trend] += 1
 
-    best_sec = max(sector_scores, key=sector_scores.get)
-    if sector_scores[best_sec] > 0:
-        matched_sector = best_sec
-        score += 20
+    # 가장 많이 매칭된 트렌드 찾기
+    best_trend = max(trend_scores, key=trend_scores.get)
+    if trend_scores[best_trend] > 0:
+        matched_trend = best_trend
+        score += 20 # 로드맵 트렌드에 속하면 강력한 가점 부여
+        reasons.append(f"핵심 트렌드 부합")
 
-    return max(0, min(100, score)), matched_sector
+    is_triggered = True if matched_trend != "일반 우량주" and return_1y > 0 else False
+
+    return max(0, min(100, score)), matched_trend, "🔥 트렌드 주도" if is_triggered else "관망", ", ".join(reasons)
 
 # -------------------------------------------------------------------
-# [3] 프론트엔드 UI
+# [3] 프론트엔드 (화면 구성)
 # -------------------------------------------------------------------
-st.markdown('<p class="main-title">AI 시장 섹터 트리맵 & 리밸런싱</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">네이버 금융 마켓 스타일의 직관적인 섹터 맵핑 및 진단</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">미래 30년 로드맵 투자 지표</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">1~5년 내 세상을 바꿀 메가트렌드 주도주를 포착합니다</p>', unsafe_allow_html=True)
 
 with st.container(border=True):
-    st.markdown("#### 💼 내 포트폴리오 입력")
+    st.markdown("#### 💼 내 포트폴리오 트렌드 진단")
     user_input = st.text_input(
-        "분석할 보유 종목을 쉼표(,)로 구분해 입력해 주세요.", 
+        "분석할 보유 종목을 쉼표(,)로 입력하세요.", 
         value="두산로보틱스, 한화오션, 테스, 에스에이엠티"
     )
 
-if st.button("🔥 실시간 섹터 맵 & 퀀트 분석 가동", use_container_width=True, type="primary"):
+if st.button("🗺️ 메가트렌드 기반 정밀 분석 시작", use_container_width=True, type="primary"):
     
-    with st.spinner("섹터별 모멘텀 계산 및 트리맵 렌더링 중..."):
+    with st.spinner("AI 로드맵에 기반한 산업 트렌드와 빅데이터 매칭 중... (약 20초 소요)"):
         candidates, df_krx = load_universe()
+        eval_results = []
+        progress_bar = st.progress(0)
         
         # 1. 시장 추천주 평가
-        eval_results = []
         for idx, row in enumerate(candidates.iterrows()):
             _, r = row
             code, name = r['Code'], r['Name']
-            r5y, r1y = get_5y_growth_data(code)
-            news = get_robust_news(name)
-            score, sector = evaluate_stock(name, r5y, r1y, news)
+            return_5y, return_1y = get_5y_growth_data(code)
+            news_list = get_robust_news(name)
+            
+            score, trend, trigger, summary = evaluate_megatrend_stock(name, return_5y, return_1y, news_list)
             
             eval_results.append({
-                '종목명': name, '섹터': sector, '점수': score, 
-                '5년성장': r5y, '1년성장': r1y, '뉴스': news[0], '타입': '시장후보'
+                '종목명': name, '트렌드': trend, '종합점수': score, 
+                '신호': trigger, '5년성장': return_5y, '최신뉴스': news_list[0], '상세평가': summary
             })
+            progress_bar.progress(int((idx + 1) / len(candidates) * 50))
             
-        result_df = pd.DataFrame(eval_results).sort_values(by='점수', ascending=False)
+        result_df = pd.DataFrame(eval_results).sort_values(by='종합점수', ascending=False)
         top_pick = result_df.iloc[0]
+        top_pick_name, top_pick_score, top_trend = top_pick['종목명'], top_pick['종합점수'], top_pick['트렌드']
 
-        # 2. 내 종목 분석
+        # 2. 내 포트폴리오 분석
         my_portfolio = [stock.strip() for stock in user_input.split(',')]
         my_results = []
         
-        for my_stock in my_portfolio:
+        for idx, my_stock in enumerate(my_portfolio):
             stock_info = df_krx[df_krx['Name'] == my_stock]
             if stock_info.empty:
-                my_results.append({"종목명": my_stock, "섹터": "기타", "점수": 0, "알림": "error", "타입": "내종목"})
+                my_results.append({"종목명": my_stock, "점수": 0, "상태": "데이터 없음", "액션": "종목 확인", "알림": "error"})
                 continue
                 
             code = stock_info.iloc[0]['Code']
-            r5y, r1y = get_5y_growth_data(code)
-            news = get_robust_news(my_stock)
-            my_score, sector = evaluate_stock(my_stock, r5y, r1y, news)
+            return_5y, return_1y = get_5y_growth_data(code)
+            news_list = get_robust_news(my_stock)
             
-            diff = top_pick['점수'] - my_score
-            if diff >= 20: action, msg_type = f"🚨 1등주({top_pick['종목명']})로 교체 검토", "warning"
-            elif diff > 0: action, msg_type = "🛡️ 보유 유지 (상위권)", "info"
-            else: action, msg_type = "👑 강력 보유", "success"
+            my_score, trend, trigger, summary = evaluate_megatrend_stock(my_stock, return_5y, return_1y, news_list)
+            
+            score_diff = top_pick_score - my_score
+            if score_diff >= 20: action, msg_type = f"🚨 트렌드 주도주({top_trend}) 편입 검토", "warning"
+            elif score_diff > 0: action, msg_type = "🛡️ 흐름 관망 (유지)", "info"
+            else: action, msg_type = "👑 강력 보유 (미래 주도주 편입 완료)", "success"
                 
             my_results.append({
-                "종목명": my_stock, "섹터": sector, "점수": my_score, 
-                "5년성장": r5y, "액션": action, "알림": msg_type, "뉴스": news[0], "타입": "내종목"
+                "종목명": my_stock, "트렌드": trend, "점수": my_score, "신호": trigger, 
+                "5년성장": return_5y, "요약": summary, "액션": action, 
+                "알림": msg_type, "뉴스": news_list[0]
             })
-
-    # -------------------------------------------------------------------
-    # [4] 트리맵(Treemap) 시각화 데이터 병합
-    # -------------------------------------------------------------------
-    # 시장 후보군과 내 종목을 하나로 합쳐서 지도에 그리기 위함
-    treemap_data = []
-    
-    # 1등 픽과 내 종목은 특별한 아이콘(👑, 📌)을 붙여서 지도에서 직관적으로 보이게 함
-    for res in eval_results:
-        display_name = f"👑 {res['종목명']}" if res['종목명'] == top_pick['종목명'] else res['종목명']
-        treemap_data.append({'섹터': res['섹터'], '표시명': display_name, '점수': res['점수'], '크기': 1})
-        
-    for res in my_results:
-        if res['알림'] != 'error':
-            # 내 종목이 시장 후보군(위)에 이미 있었는지 중복 체크 후 병합
-            if not any(res['종목명'] in d['표시명'] for d in treemap_data):
-                treemap_data.append({'섹터': res['섹터'], '표시명': f"📌 {res['종목명']}", '점수': res['점수'], '크기': 1})
-            else:
-                # 이미 있다면 내 종목 마크만 업데이트
-                for d in treemap_data:
-                    if res['종목명'] in d['표시명']:
-                        d['표시명'] = f"📌👑 {res['종목명']}" if "👑" in d['표시명'] else f"📌 {res['종목명']}"
-
-    df_tree = pd.DataFrame(treemap_data)
-    # 루트 노드(시장 전체) 설정
-    df_tree['전체시장'] = "🇰🇷 전체 시장 (AI 메가트렌드)"
-
-    # -------------------------------------------------------------------
-    # [5] 화면 탭 구성
-    # -------------------------------------------------------------------
-    tab_map, tab_top, tab_my = st.tabs(["🔥 섹터 트리맵 (마켓 지형도)", "🏆 AI 추천주 Top 5", "💼 내 포트폴리오 진단"])
-    
-    # [탭 1] 실시간 섹터 트리맵 (네이버 UI 완벽 복제)
-    with tab_map:
-        st.markdown("### 📊 실시간 AI 주도 섹터 트리맵")
-        st.caption("🔴 빨간색일수록 유망/상승(Hot) 섹터이며, 🔵 파란색일수록 둔화/하락(Cold) 섹터입니다. 박스를 터치해 보세요!")
-        
-        # Plotly를 이용한 계층형 트리맵 생성
-        fig = px.treemap(
-            df_tree, 
-            path=['전체시장', '섹터', '표시명'], # 계층 구조 (전체 -> 섹터 -> 종목)
-            values='크기', # 각 박스의 크기 비중
-            color='점수', # 점수에 따른 색상 변화
-            color_continuous_scale=['#1a5293', '#4579c6', '#d6dde6', '#f2766f', '#d92c2c'], # 네이버 파란색 -> 빨간색 그라데이션
-            range_color=[30, 90] # 점수 범위 고정 (극단적 색상 배정용)
-        )
-        
-        fig.update_layout(
-            margin=dict(t=10, l=10, r=10, b=10),
-            coloraxis_showscale=False # 지저분한 컬러바 숨김
-        )
-        # 종목 글씨 크기 및 디자인 세팅
-        fig.update_traces(
-            textinfo="label+value",
-            textfont=dict(size=14, color="white"),
-            hoverinfo="label+color"
-        )
-        
-        # 화면에 그래프 출력
-        st.plotly_chart(fig, use_container_width=True)
-        st.info("**범례:** 👑 AI 1등 추천주 | 📌 내 보유 종목")
-
-    # [탭 2] AI 추천주
-    with tab_top:
-        st.markdown(f"### 🏆 오늘의 시장 전체 1등: **{top_pick['종목명']}**")
-        with st.container(border=True):
-            col1, col2 = st.columns([1, 1])
-            col1.metric("소속 섹터", top_pick['섹터'])
-            col2.metric("AI 종합 점수", f"{top_pick['점수']} 점")
-            st.markdown(f"**📰 핵심 뉴스:** {top_pick['뉴스']}")
+            progress_bar.progress(50 + int((idx + 1) / len(my_portfolio) * 50))
             
-        with st.expander("📊 AI 시장 추천주 Top 5 전체 보기"):
-            st.dataframe(result_df[['섹터', '종목명', '점수', '5년성장']].head(5), hide_index=True)
+        progress_bar.empty()
 
-    # [탭 3] 내 포트폴리오
-    with tab_my:
-        st.markdown("### 💼 내 종목 리밸런싱 판정")
+    # -------------------------------------------------------------------
+    # [4] 결과 출력 화면
+    # -------------------------------------------------------------------
+    tab1, tab2 = st.tabs(["🚀 시장 주도 테마 & 대장주", "💼 내 포트폴리오 트렌드"])
+    
+    with tab1:
+        st.markdown("### 🏆 AI 로드맵 기반 추천 픽")
+        with st.container(border=True):
+            st.markdown(f"#### 주도 테마: <span class='megatrend-tag'>{top_trend}</span>", unsafe_allow_html=True)
+            col1, col2, col3 = st.columns([2, 1, 1])
+            col1.metric("Top Pick", top_pick_name)
+            col2.metric("5년 성장률", f"{top_pick['5년성장']}%")
+            col3.metric("트렌드 점수", f"{top_pick_score} 점", top_pick['신호'])
+            
+            st.markdown("---")
+            st.markdown(f"**📰 관련 뉴스:** {top_pick['최신뉴스']}")
+            st.markdown(f"**💡 AI 진단:** {top_pick['상세평가']}")
+        
+        with st.expander("📊 향후 1~5년 주도 후보군 Top 5"):
+            display_df = result_df[['트렌드', '종목명', '종합점수', '상세평가']].copy()
+            st.dataframe(display_df.head(5), hide_index=True)
+
+    with tab2:
+        st.markdown("### 내 종목 메가트렌드 매칭 결과")
         for res in my_results:
             if res["알림"] == "error":
                 st.error(f"❌ {res['종목명']}: 데이터를 찾을 수 없습니다.")
@@ -247,10 +223,11 @@ if st.button("🔥 실시간 섹터 맵 & 퀀트 분석 가동", use_container_w
                 with st.container(border=True):
                     col_a, col_b = st.columns([2, 1])
                     with col_a:
-                        st.markdown(f"#### {res['종목명']} <small style='font-size:0.8rem; color:#888;'>({res['섹터']})</small>", unsafe_allow_html=True)
+                        st.markdown(f"#### {res['종목명']}")
+                        st.markdown(f"<span class='megatrend-tag'>{res['트렌드']}</span>", unsafe_allow_html=True)
                         st.caption(f"뉴스: {res['뉴스']}")
                     with col_b:
-                        st.metric("종목 점수", f"{res['점수']} 점", delta_color="off")
+                        st.metric("트렌드 점수", f"{res['점수']} 점", res['신호'], delta_color="off")
                     
                     if res["알림"] == "warning": st.warning(f"**Action:** {res['액션']}")
                     elif res["알림"] == "info": st.info(f"**Action:** {res['액션']}")
