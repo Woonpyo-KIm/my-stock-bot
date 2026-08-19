@@ -218,7 +218,7 @@ if st.button("🔥 실시간 섹터 맵 & 퀀트 분석 가동", use_container_w
         fig.update_traces(
             textinfo="label+value",
             textfont=dict(size=14, color="white"),
-            hoverinfo="label+color"
+            hoverinfo="label+value"
         )
         
         # 화면에 그래프 출력
