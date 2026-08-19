@@ -1,0 +1,310 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import requests, datetime as dt, xml.etree.ElementTree as ET
+import plotly.express as px
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import FinanceDataReader as fdr
+
+# 화면 제목이 v4.5로 바뀌었는지 꼭 확인해주세요!
+st.set_page_config(page_title="AI Market Map PRO v4.5", page_icon="🗺️", layout="wide")
+
+st.markdown("""
+<style>
+@media (max-width: 768px) {
+    .block-container { padding: 1rem 0.5rem !important; }
+    h1 { font-size: 1.5rem !important; }
+    [data-testid="stMetricValue"] { font-size: 1.3rem !important; word-break: break-word !important; }
+    [data-testid="stMetricLabel"] { font-size: 0.85rem !important; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+COLOR_SCALE = [
+    [0.0,  "#1e3a8a"],  
+    [0.25, "#60a5fa"],  
+    [0.50, "#e2e8f0"],  
+    [0.75, "#f87171"],  
+    [1.0,  "#dc2626"]   
+]
+
+# 미국 주식 섹터 초강력 하드코딩 (이 목록에 있으면 무조건 이 섹터로 들어갑니다)
+SECTORS = {
+    "⚡ Technology": ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CSCO", "AMD", "QCOM", "TXN", "IBM", "AMAT", "NOW", "INTU", "PLTR", "MU", "LRCX", "ADI", "PANW", "SNPS", "CDNS", "KLAC", "DELL", "ANET", "CRWD", "APH", "SMCI", "FTNT", "MCHP"],
+    "🛒 Consumer Disc.": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "BKNG", "TJX", "LOW", "MAR", "ORLY", "GM", "F", "ABNB", "CMG", "RCL", "LULU", "DPZ"],
+    "🧬 Healthcare": ["LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "PFE", "ABT", "DHR", "ISRG", "AMGN", "ELV", "SYK", "VRTX", "MDT", "CI", "REGN", "ZTS", "BSX", "CVS", "BDX"],
+    "💰 Financials": ["JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "AXP", "C", "BLK", "SPGI", "SCHW", "CB", "MMC", "PGR", "CME", "AON", "ICE"],
+    "📱 Communication": ["GOOGL", "GOOG", "META", "NFLX", "DIS", "CMCSA", "VZ", "T", "TMUS", "EA", "TTWO", "OMC", "CHTR"],
+    "🏗️ Industrials": ["GE", "CAT", "UBER", "BA", "HON", "UNP", "UPS", "LMT", "RTX", "DE", "ADP", "ETN", "WM", "CSX", "NOC", "GD", "PCAR", "EMR"],
+    "🍔 Staples": ["WMT", "PG", "COST", "KO", "PEP", "PM", "TGT", "MO", "CL", "MDLZ", "KHC", "SYY", "EL", "KDP"],
+    "🔋 Energy": ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "PXD", "HES", "HAL", "WMB"],
+    "🏠 Real Estate / Util": ["PLD", "AMT", "EQIX", "NEE", "DUK", "SO", "DLR", "PSA", "AEP", "SRE", "CCI", "O", "WELL"],
+    "🧪 Materials": ["LIN", "SHW", "FCX", "ECL", "NEM", "APD", "NUE", "CTVA", "DOW"]
+}
+
+# (이름을 v4_5로 바꾸어 기존 꼬인 캐시를 완벽히 무시합니다)
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_us_universe_v4_5():
+    try:
+        x = fdr.StockListing('S&P500')
+        if x is not None and not x.empty:
+            x = x.copy()
+            sym_col = "Symbol" if "Symbol" in x.columns else "Ticker" if "Ticker" in x.columns else x.columns[0]
+            name_col = "Security" if "Security" in x.columns else "Name" if "Name" in x.columns else x.columns[1]
+            x = x.rename(columns={sym_col: "Code", name_col: "Name"})
+            x["Code"] = x["Code"].astype(str).str.strip().str.upper()
+            x["Name"] = x["Name"].astype(str).str.strip()
+            x["Marcap"] = 0
+            x["Volume"] = 0
+            return x.drop_duplicates("Code"), False
+    except Exception:
+        pass
+    
+    # FDR 실패시 대비
+    fallback_tickers = []
+    for sec, tickers in SECTORS.items():
+        for t in tickers[:5]: fallback_tickers.append((t, t))
+    fallback_df = pd.DataFrame([{"Code": c, "Name": n, "Marcap": 0, "Volume": 0} for c, n in fallback_tickers])
+    return fallback_df, True
+
+# (캐시 우회용 이름 변경)
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_price_v4_5(ticker):
+    try:
+        end = dt.date.today(); start = end - dt.timedelta(days=365*5+45)
+        x = fdr.DataReader(str(ticker).strip().upper(), start, end)
+        if x is None or x.empty or "Close" not in x: return pd.DataFrame()
+        x = x.copy(); x.index = pd.to_datetime(x.index); return x.sort_index()
+    except Exception: return pd.DataFrame()
+
+def get_sector_safe(ticker):
+    ticker = str(ticker).upper()
+    for s, ks in SECTORS.items():
+        if ticker in ks: return s
+    return "💡 Growth/Others"
+
+def ret(close, days):
+    if close.empty: return 0.0
+    p = close[close.index <= close.index[-1] - pd.Timedelta(days=days)]
+    if p.empty: return 0.0
+    return (close.iloc[-1] / p.iloc[-1] - 1) * 100 if p.iloc[-1] > 0 else 0.0
+
+def analyze(ticker, name, marcap=0, volume=0):
+    ticker = str(ticker).upper()
+    sector_name = get_sector_safe(ticker)  # 확실한 매핑 로직 적용
+    x = get_price_v4_5(ticker)
+    
+    base = {"Ticker": ticker, "Company": name, "Sector": sector_name, "Chart": x.tail(100)}
+    if x.empty: 
+        return {**base, "Current Price": 0, "1Y Return": 0, "3M Return": 0, "1M Return": 0, "Trend Score": 0, "Score": 0, "Action": "⚪ No Data", "Est. Market Price": 0}
+    
+    c = pd.to_numeric(x.Close, errors="coerce").dropna(); cur = float(c.iloc[-1])
+    r5, r1, r3, r1m = [ret(c, d) for d in (1825, 365, 90, 30)]
+    
+    ma20 = c.rolling(20).mean().iloc[-1]
+    ma60 = c.rolling(60).mean().iloc[-1] if len(c) >= 60 else np.nan
+    ma120 = c.rolling(120).mean().iloc[-1] if len(c) >= 120 else np.nan
+    
+    trend = (35 if cur > ma20 else 0) + (35 if pd.notna(ma60) and cur > ma60 else 0) + (30 if pd.notna(ma120) and cur > ma120 else 0)
+    vol = float(c.pct_change().tail(60).std() * np.sqrt(252) * 100)
+    dd = float((c / c.cummax() - 1).min() * 100)
+    est_market_price = float(ma60) if pd.notna(ma60) else cur
+    
+    score = 50
+    score += 15 if r5 >= 100 else 10 if r5 >= 50 else 5 if r5 > 0 else -10 if r5 < -30 else 0
+    score += 20 if r1 >= 30 else 14 if r1 >= 15 else 7 if r1 > 0 else -12 if r1 < -20 else 0
+    score += 15 if r3 >= 20 else 10 if r3 >= 10 else 5 if r3 > 0 else -10 if r3 < -15 else 0
+    score += 10 if r1m >= 10 else 6 if r1m >= 3 else 2 if r1m > 0 else -8 if r1m < -10 else 0
+    score += trend * .20
+    if vol > 80: score -= 5
+    if dd < -35: score -= 5
+    score = int(max(0, min(100, round(score))))
+    
+    action = "🟢 Strong Buy" if score >= 82 and r3 > 5 else "🟢 Buy/Hold" if score >= 72 else "🟡 Watch" if score >= 62 else "🟠 Trim" if score >= 48 else "🔴 Sell"
+    
+    return {**base, "Current Price": cur, "1Y Return": round(r1, 2), "3M Return": round(r3, 2), "1M Return": round(r1m, 2), "Trend Score": int(trend), "Score": score, "Action": action, "Est. Market Price": est_market_price, "Max Drawdown": round(dd, 2)}
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def news(ticker, limit=5):
+    out = []
+    try:
+        u = f"https://news.google.com/rss/search?q={requests.utils.quote(ticker + ' stock')}&hl=en-US&gl=US&ceid=US:en"
+        r = requests.get(u, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        root = ET.fromstring(r.content) if r.ok else None
+        if root:
+            for item in root.findall(".//item"):
+                t = item.find("title")
+                if t is not None and t.text:
+                    z = t.text.replace(" - Yahoo Finance", "").strip()
+                    if z not in out: out.append(z)
+                if len(out) >= limit: break
+    except Exception: pass
+    return out or ["Failed to fetch recent news."]
+
+def outlook(df):
+    a = df["Score"].mean(); r3 = df["3M Return"].mean(); r1 = df["1M Return"].mean()
+    hot = (df["Score"] >= 75).mean() * 100; pos = (df["3M Return"] > 0).mean() * 100
+    p = sum([a >= 70, r3 > 5, r1 > 2, hot >= 30, pos >= 60]) - sum([a < 50, r3 < -5, r1 < -2, hot < 10, pos < 40])
+    label = "🟢 Strong Bull" if p >= 4 else "🟢 Mild Bull" if p >= 2 else "🔴 Strong Bear" if p <= -4 else "🟠 Bear/Defensive" if p <= -2 else "🟡 Neutral/Mixed"
+    return label, f"Avg Score {a:.1f}, Avg 3M {r3:.1f}%, Avg 1M {r1:.1f}%, HOT ratio {hot:.1f}%, Positive 3M ratio {pos:.1f}%"
+
+st.markdown("<h1 style='text-align:center'>🗺️ AI MARKET MAP PRO v4.5</h1>", unsafe_allow_html=True)
+st.caption("🔥 Force Cache Clear Applied · Sector Mapping Fixed · True Color Scale Active")
+
+if "portfolio_data_us" not in st.session_state:
+    st.session_state.portfolio_data_us = pd.DataFrame([
+        {"Ticker": "DELL", "Quantity": 20.0, "Avg Price": 90.00},
+        {"Ticker": "TSLA", "Quantity": 10.0, "Avg Price": 150.50},
+        {"Ticker": "NVDA", "Quantity": 25.0, "Avg Price": 80.00},
+        {"Ticker": "AAPL", "Quantity": 0.0, "Avg Price": 0.0}
+    ])
+
+with st.sidebar:
+    st.header("💼 My Portfolio Input")
+    with st.form("portfolio_form_us"):
+        st.caption("Enter US Tickers (e.g. AAPL, DELL).")
+        edited_df = st.data_editor(
+            st.session_state.portfolio_data_us, num_rows="dynamic", use_container_width=True, hide_index=True, key="portfolio_editor_us"
+        )
+        run = st.form_submit_button("🗺️ Start PRO US Market Analysis", use_container_width=True, type="primary")
+
+    st.divider()
+    st.header("⚙️ Analysis Settings")
+    pool_size = st.slider("Initial Scan Pool (S&P 500 Caps)", 50, 300, 150, 50)
+    n = st.slider("Final Displayed Stocks (Top Score)", 20, 100, 50, 10)
+    workers = st.slider("Concurrent Requests (Speed)", 2, 8, 5)
+
+if run:
+    st.session_state.portfolio_data_us = edited_df.copy()
+    ps = edited_df.dropna(subset=["Ticker"]).to_dict(orient="records")
+    ps = [p for p in ps if str(p.get("Ticker", "")).strip() != ""]
+
+    u, fallback = load_us_universe_v4_5()
+    c = u.head(pool_size)
+    jobs = {}
+    
+    for _, r in c.iterrows():
+        jobs[r.Code] = (r.Name, 0, 0)
+    for p in ps:
+        t = str(p["Ticker"]).upper()
+        jobs[t] = (t, 0, 0)
+        
+    results = []; bar = st.progress(0)
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        fs = {ex.submit(analyze, *((code,)+info)): code for code, info in jobs.items()}
+        for i, f in enumerate(as_completed(fs), 1):
+            try: results.append(f.result())
+            except Exception: pass
+            bar.progress(i / max(1, len(fs)))
+    bar.empty(); df = pd.DataFrame(results)
+    
+    if df.empty: st.error("Failed to load price data."); st.stop()
+    
+    p_rows = []
+    for p in ps:
+        code = str(p["Ticker"]).upper()
+        m = df[df.Ticker == code]
+        if m.empty: continue
+        r = m.iloc[0].to_dict()
+        q = float(p.get("Quantity", 0))
+        a = float(p.get("Avg Price", 0))
+        cur = r["Current Price"]
+        r.update({
+            "Quantity": q, "Avg Price": a, "Valuation": cur * q, "Total Cost": a * q,
+            "Total PnL": cur * q - a * q, "Total Return": ((cur / a - 1) * 100 if a > 0 else np.nan),
+            "Owned": True
+        })
+        p_rows.append(r)
+        
+    df["Owned"] = df.Ticker.isin([str(p["Ticker"]).upper() for p in ps])
+    df_others = df[~df["Owned"]].sort_values(["Score", "3M Return"], ascending=False).head(n)
+    df_port = df[df["Owned"]]
+    df = pd.concat([df_port, df_others]).sort_values(["Score", "3M Return"], ascending=False).reset_index(drop=True)
+    st.session_state.update(market_results_us=df, portfolio_results_us=pd.DataFrame(p_rows), analysis_complete_us=True)
+
+if st.session_state.get("analysis_complete_us"):
+    df = st.session_state.market_results_us; pf = st.session_state.portfolio_results_us
+    ol, why = outlook(df)
+    
+    st.markdown("## 🧠 AI Market Outlook")
+    o_col1, o_col2 = st.columns(2)
+    o_col1.metric("Market Phase", ol)
+    o_col2.metric("Avg Score", f"{df['Score'].mean():.1f}")
+    o_col3, o_col4 = st.columns(2)
+    o_col3.metric("Avg 3M Return", f"{df['3M Return'].mean():.1f}%")
+    o_col4.metric("Avg 1M Return", f"{df['1M Return'].mean():.1f}%")
+    st.info(why)
+    
+    top = df.iloc[0]; st.markdown("## 🏆 Ranking TOP PICK")
+    t_col1, t_col2 = st.columns(2)
+    t_col1.metric("Ticker", top.Ticker)
+    t_col2.metric("Sector", top.Sector)
+    t_col3, t_col4, t_col5 = st.columns(3)
+    t_col3.metric("Score", f"{top['Score']} pts")
+    t_col4.metric("3M Return", f"{top['3M Return']:.1f}%")
+    t_col5.metric("Action", top.Action)
+    
+    t1, t2, t3, t4 = st.tabs(["🗺️ Market Map", "🔥 Sectors", "💼 Portfolio", "🔍 Details"])
+    
+    with t1:
+        x = df.copy()
+        x["Display Name"] = x.apply(lambda r: "📌 " + r.Ticker if r.Owned else r.Ticker, axis=1)
+        x["Prospect"] = pd.to_numeric(x["Score"], errors="coerce").clip(0, 100)
+        x["Prospect Size"] = (x["Prospect"] + 1) ** 2
+
+        # [최종 픽스] 스케일을 현재 화면에 출력된 1등과 꼴등 점수로 강제 매핑합니다.
+        min_score = float(x["Prospect"].min())
+        max_score = float(x["Prospect"].max())
+        if min_score == max_score:
+            min_score, max_score = 0, 100
+        
+        fig = px.treemap(
+            x, path=["Sector", "Display Name"], values="Prospect Size", color="Prospect",
+            color_continuous_scale=COLOR_SCALE, 
+            range_color=[min_score, max_score], 
+            custom_data=["Prospect", "3M Return", "1M Return", "Action"]
+        )
+        fig.update_layout(height=600, margin=dict(t=0,l=0,r=0,b=0), coloraxis_showscale=True)
+        fig.update_traces(
+            textinfo="label",
+            hovertemplate="<b>%{label}</b><br>Score: %{customdata[0]}<br>3M Return: %{customdata[1]:.1f}%<br>%{customdata[3]}<extra></extra>"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"📌 Relative Color Mapping: Lowest Score ({min_score:.0f} pts) is Blue, Highest Score ({max_score:.0f} pts) is Red.")
+        
+        st.divider()
+        st.markdown("### 🖱️ Stock Quick View")
+        sel_quick = st.selectbox("Select a Ticker:", ["(None Selected)"] + df.Ticker.tolist())
+        if sel_quick != "(None Selected)":
+            r_quick = df[df.Ticker == sel_quick].iloc[0]
+            if isinstance(r_quick["Chart"], pd.DataFrame) and not r_quick["Chart"].empty:
+                st.line_chart(r_quick["Chart"][["Close"]].rename(columns={"Close": "Price ($)"}), use_container_width=True)
+            st.markdown("**📰 Recent News**")
+            for i, z in enumerate(news(sel_quick, 3), 1): st.markdown(f"- {z}")
+    
+    with t2:
+        s = df.groupby("Sector").agg(Avg_Score=("Score","mean"), Avg_3M=("3M Return","mean")).reset_index().sort_values("Avg_Score", ascending=False)
+        fig = px.bar(s.sort_values("Avg_Score"), x="Avg_Score", y="Sector", orientation="h", text="Avg_Score", color="Avg_Score", color_continuous_scale=COLOR_SCALE, range_color=[min_score, max_score])
+        fig.update_traces(texttemplate='%{text:.1f}')
+        fig.update_layout(height=500, coloraxis_showscale=False); st.plotly_chart(fig, use_container_width=True)
+    
+    with t3:
+        if pf.empty: st.warning("No portfolio data.")
+        else:
+            ev = pf["Valuation"].sum(); cost = pf["Total Cost"].sum(); pnl = ev - cost
+            p_col1, p_col2 = st.columns(2)
+            p_col1.metric("Total Valuation", f"$ {ev:,.2f}"); p_col2.metric("Total Cost", f"$ {cost:,.2f}")
+            cols = ["Ticker", "Avg Price", "Current Price", "Valuation", "Total Return", "Score", "Action"]
+            pf_display = pf[cols].copy()
+            for col in ["Avg Price", "Current Price", "Valuation"]:
+                pf_display[col] = pf_display[col].apply(lambda x: f"$ {x:,.2f}")
+            st.dataframe(pf_display, use_container_width=True, hide_index=True)
+            
+    with t4:
+        cols = ["Ticker", "Company", "Sector", "Score", "Action", "Current Price", "Est. Market Price", "1Y Return", "3M Return", "Max Drawdown"]
+        q = df[cols].copy(); q.insert(0, "Rank", range(1, len(q)+1))
+        for col in ["Current Price", "Est. Market Price"]:
+            q[col] = q[col].apply(lambda x: f"$ {x:,.2f}")
+        st.dataframe(q, use_container_width=True, hide_index=True)
+else:
+    st.info("👆 Open the sidebar (top left) to enter your portfolio and click **Start PRO US Market Analysis** to begin.")
