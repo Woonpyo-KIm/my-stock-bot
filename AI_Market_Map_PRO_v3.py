@@ -1,247 +1,103 @@
 import streamlit as st
 import pandas as pd
-import requests
-import time
-import datetime
-import FinanceDataReader as fdr
-import xml.etree.ElementTree as ET
+import numpy as np
+import requests, datetime as dt, xml.etree.ElementTree as ET
 import plotly.express as px
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import FinanceDataReader as fdr
 
-# -------------------------------------------------------------------
-# [1] 웹페이지 기본 설정 및 디자인
-# -------------------------------------------------------------------
-st.set_page_config(page_title="AI 시장 섹터 맵 & BB 돌파", page_icon="🗺️", layout="centered")
+st.set_page_config(page_title="AI Market Map PRO v5.0 (KRX)", page_icon="🗺️", layout="wide")
 
+# ==========================================
+# 📱 모바일 최적화 커스텀 CSS
+# ==========================================
 st.markdown("""
 <style>
-    .main-title {
-        font-size: 2.2rem;
-        font-weight: 800;
-        text-align: center;
-        background: linear-gradient(45deg, #ff4e50, #1a5293);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0px;
-        padding-top: 1rem;
-    }
-    .sub-title {
-        text-align: center;
-        color: #666;
-        font-size: 0.95rem;
-        margin-bottom: 1.5rem;
-    }
+@media (max-width: 768px) {
+    .block-container { padding: 1rem 0.5rem !important; }
+    h1 { font-size: 1.5rem !important; }
+    h2 { font-size: 1.3rem !important; }
+    h3 { font-size: 1.1rem !important; }
+    [data-testid="stMetricValue"] { font-size: 1.3rem !important; word-break: break-word !important; }
+    [data-testid="stMetricLabel"] { font-size: 0.85rem !important; }
+}
+div[data-testid="stExpander"] {
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------------------------
-# [2] 백엔드 로직 (볼린저 밴드 추가)
-# -------------------------------------------------------------------
-@st.cache_data(ttl=3600)
-def load_universe():
-    df_krx = fdr.StockListing('KRX')
-    candidates = df_krx[df_krx['Marcap'] >= 1000000000000].sort_values(by='Marcap', ascending=False).head(40)
-    return candidates, df_krx
+# 한국식 컬러 스케일: 0% 중앙(회색), 상승(빨강), 하락(파랑)
+COLOR_SCALE = [
+    [0.0,  "#1e3a8a"],  # 파랑 (하락)
+    [0.25, "#60a5fa"],  
+    [0.50, "#e2e8f0"],  # 회색 (보합 0%)
+    [0.75, "#f87171"],  
+    [1.0,  "#dc2626"]   # 빨강 (상승)
+]
 
-def get_stock_data_with_bb(stock_code):
-    end_date = datetime.date.today()
-    start_date_5y = end_date - datetime.timedelta(days=365 * 5)
-    start_date_3m = end_date - datetime.timedelta(days=90)
-    
-    try:
-        df = fdr.DataReader(stock_code, start_date_5y, end_date)
-        if len(df) < 20: return 0.0, 0.0, pd.DataFrame(), False
-        
-        # 💡 [핵심] 볼린저 밴드 계산 (20일 이동평균선 ± 2 표준편차)
-        df['MA20'] = df['Close'].rolling(window=20).mean()
-        df['STD20'] = df['Close'].rolling(window=20).std()
-        df['Upper_Band'] = df['MA20'] + (df['STD20'] * 2)
-        df['Lower_Band'] = df['MA20'] - (df['STD20'] * 2)
-        
-        # 차트 출력용 데이터 (최근 3개월) - 종가와 상/하단 밴드만 추출
-        df_3m = df.loc[df.index >= pd.to_datetime(start_date_3m)][['Close', 'Upper_Band', 'Lower_Band']]
-        
-        current_price = df['Close'].iloc[-1]
-        
-        # 💡 [매수 트리거] 볼린저 밴드 상단 돌파 확인
-        is_bb_breakout = current_price > df['Upper_Band'].iloc[-1]
-        
-        # 수익률 계산
-        price_5y_ago = df['Close'].iloc[0]
-        return_5y = ((current_price / price_5y_ago) - 1) * 100
-        
-        df_1y = df.loc[df.index >= pd.to_datetime(end_date - datetime.timedelta(days=365))]
-        return_1y = ((current_price / df_1y['Close'].iloc[0]) - 1) * 100 if not df_1y.empty else return_5y
-        
-        return round(return_5y, 2), round(return_1y, 2), df_3m, is_bb_breakout
-    except: 
-        return 0.0, 0.0, pd.DataFrame(), False
-
-def get_robust_news(stock_name, limit=3):
-    news_list = []
-    try:
-        url = f"https://news.google.com/rss/search?q={stock_name}+주식&hl=ko&gl=KR&ceid=KR:ko"
-        res = requests.get(url, timeout=2)
-        if res.status_code == 200:
-            root = ET.fromstring(res.text)
-            for item in root.findall('.//item/title'):
-                news_list.append(item.text.replace(' - Yahoo Finance', '').replace(' - Naver', '').strip())
-                if len(news_list) >= limit: break
-    except: pass
-    if not news_list: news_list = ["최근 시장 이슈 관망"]
-    while len(news_list) < limit: news_list.append("-")
-    return news_list[:limit]
-
-SECTORS = {
-    "⚡ AI/반도체": ["AI", "반도체", "HBM", "테스", "에스에이엠티", "SK하이닉스", "삼성전자", "한미반도체"],
-    "🤖 로봇/자동화": ["로봇", "자동화", "스마트팩토리", "두산로보틱스", "레인보우로보틱스"],
-    "🚢 조선/방산": ["조선", "방산", "수주", "한화오션", "HD현대", "한국항공우주"],
-    "🧬 바이오/제약": ["바이오", "신약", "제약", "삼성바이오로직스", "셀트리온", "유한양행"],
-    "🚗 자동차/부품": ["자동차", "현대차", "기아", "현대모비스", "만도"],
-    "💰 금융/지주사": ["금융", "은행", "지주", "배당", "KB금융", "신한지주", "하나금융지주"],
-    "🔋 2차전지/배터리": ["배터리", "2차전지", "에코프로", "LG에너지솔루션", "포스코퓨처엠"],
-    "📱 통신/네트워크": ["통신", "SK텔레콤", "KT", "LG유플러스"],
-    "🎬 엔터/게임": ["엔터", "게임", "콘텐츠", "하이브", "엔씨소프트", "카카오"],
-    "🛒 유통/소비재": ["유통", "쇼핑", "화장품", "이마트", "신세계", "아모레퍼시픽"],
-    "🏗️ 건설/부동산": ["건설", "부동산", "건축", "현대건설", "GS건설", "대우건설"],
-    "🧪 철강/화학": ["철강", "화학", "석유", "포스코홀딩스", "LG화학", "S-Oil"]
+# 국내 주요 10대 섹터 키워드 매핑
+SECTOR_KEYWORDS = {
+    "⚡ AI/반도체": ["반도체", "HBM", "AI", "전자", "칩", "테스", "에스에이엠티", "SK하이닉스", "삼성전자"],
+    "🤖 로봇/자동화": ["로봇", "자동화", "스마트팩토리", "기계", "두산로보틱스", "레인보우로보틱스"],
+    "🚢 조선/방산": ["조선", "방산", "중공업", "항공", "우주", "한화오션", "HD현대중공업"],
+    "🧬 바이오/제약": ["제약", "바이오", "의약", "헬스케어", "삼성바이오로직스", "셀트리온"],
+    "🚗 자동차/부품": ["자동차", "부품", "모빌리티", "현대차", "기아"],
+    "💰 금융/지주": ["금융", "은행", "증권", "보험", "지주", "KB금융", "신한지주"],
+    "🔋 2차전지/배터리": ["배터리", "2차전지", "에너지솔루션", "에코프로", "포스코퓨처엠"],
+    "📱 IT/통신/게임": ["통신", "소프트웨어", "인터넷", "게임", "NAVER", "카카오", "SK텔레콤"],
+    "🏗️ 건설/철강/화학": ["건설", "철강", "화학", "소재", "POSCO홀딩스", "LG화학"],
+    "💡 기타 우량주": []
 }
 
-def evaluate_stock(stock_name, return_5y, return_1y, is_bb_breakout):
-    score = 50
-    matched_sector = "기타 우량주"
-    actions = []
+def map_krx_sector(name, dept_sector=""):
+    text = f"{name} {dept_sector}"
+    for sec, keywords in SECTOR_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return sec
+    return "💡 기타 우량주"
 
-    if return_5y > 50: score += 10
-    elif return_5y < 0: score -= 10
-    if return_1y > 15: score += 10
-    elif return_1y < -10: score -= 10
-
-    # 💡 [평가 반영] 볼린저 밴드 상단 돌파 시 강력한 모멘텀 가점 부여
-    if is_bb_breakout:
-        score += 20
-        actions.append("🚀 BB 상단 돌파 (강한 상승 추세)")
-
-    for sec, keywords in SECTORS.items():
-        if any(kw in stock_name for kw in keywords):
-            matched_sector = sec
-            break
-
-    signal_text = " + ".join(actions) if actions else "밴드 내 횡보"
-    return max(0, min(100, score)), matched_sector, signal_text
-
-# -------------------------------------------------------------------
-# [3] 프론트엔드 UI
-# -------------------------------------------------------------------
-st.markdown('<p class="main-title">AI 마켓 맵 & BB 퀀트 스캐너</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">12대 섹터 트리맵과 볼린저 밴드 돌파(Breakout) 실시간 감지</p>', unsafe_allow_html=True)
-
-with st.container(border=True):
-    user_input = st.text_input(
-        "💼 내 보유 종목 (쉼표로 구분)", 
-        value="두산로보틱스, 한화오션, 테스, 에스에이엠티"
-    )
-
-if st.button("🗺️ 시장 지도 및 BB 돌파 분석 시작", use_container_width=True, type="primary"):
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_krx_universe_v5():
+    try:
+        x = fdr.StockListing('KRX')
+        if x is not None and not x.empty:
+            x = x.copy()
+            x["Code"] = x["Code"].astype(str).str.zfill(6)
+            x["Name"] = x["Name"].astype(str).str.strip()
+            
+            # 섹터 매핑
+            dept_col = "Dept" if "Dept" in x.columns else "Sector" if "Sector" in x.columns else ""
+            x["Sector_Mapped"] = x.apply(lambda r: map_krx_sector(r["Name"], str(r.get(dept_col, ""))), axis=1)
+            
+            if "Marcap" not in x.columns: x["Marcap"] = 0
+            if "Volume" not in x.columns: x["Volume"] = 0
+            return x.drop_duplicates("Code"), False
+    except Exception:
+        pass
     
-    with st.spinner("섹터 분류 및 볼린저 밴드 계산 중..."):
-        candidates, df_krx = load_universe()
-        
-        # 1. 시장 추천주 평가
-        eval_results = []
-        for idx, row in enumerate(candidates.iterrows()):
-            _, r = row
-            code, name, vol, marcap = r['Code'], r['Name'], r['Volume'], r['Marcap']
-            r5y, r1y, df_chart, is_bb = get_stock_data_with_bb(code)
-            score, sector, signal = evaluate_stock(name, r5y, r1y, is_bb)
-            
-            eval_results.append({
-                '종목명': name, '종목코드': code, '섹터': sector, '점수': score, 
-                '거래량': vol, '시가총액': marcap, '차트': df_chart, '시그널': signal
-            })
-            
-        result_df = pd.DataFrame(eval_results).sort_values(by='점수', ascending=False)
-        top_pick = result_df.iloc[0]
+    fallback_df = pd.DataFrame([{"Code": "005930", "Name": "삼성전자", "Sector_Mapped": "⚡ AI/반도체", "Marcap": 0, "Volume": 0}])
+    return fallback_df, True
 
-        # 2. 내 종목 분석
-        my_portfolio = [stock.strip() for stock in user_input.split(',')]
-        my_results = []
-        
-        for my_stock in my_portfolio:
-            stock_info = df_krx[df_krx['Name'] == my_stock]
-            if stock_info.empty: continue
-                
-            code, vol, marcap = stock_info.iloc[0]['Code'], stock_info.iloc[0]['Volume'], stock_info.iloc[0]['Marcap']
-            r5y, r1y, df_chart, is_bb = get_stock_data_with_bb(code)
-            my_score, sector, signal = evaluate_stock(my_stock, r5y, r1y, is_bb)
-                
-            my_results.append({
-                "종목명": my_stock, "종목코드": code, "섹터": sector, "점수": my_score, 
-                "거래량": vol, "시가총액": marcap, "차트": df_chart, "시그널": signal
-            })
-            
-        st.session_state['all_stocks'] = eval_results + my_results
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_price_v5(code):
+    try:
+        end = dt.date.today()
+        start = end - dt.timedelta(days=365*5+45)
+        code_str = str(code).strip().zfill(6)
+        x = fdr.DataReader(code_str, start, end)
+        if x is None or x.empty or "Close" not in x: return pd.DataFrame()
+        x = x.copy()
+        x.index = pd.to_datetime(x.index)
+        return x.sort_index()
+    except Exception:
+        return pd.DataFrame()
 
-    # -------------------------------------------------------------------
-    # [4] 트리맵 시각화 및 상세 분석 화면
-    # -------------------------------------------------------------------
-    tab_map, tab_detail = st.tabs(["🗺️ 시장 전체 트리맵", "🔍 종목 상세 (차트/뉴스)"])
-    
-    with tab_map:
-        st.markdown("### 📊 실시간 한국 증시 섹터 맵")
-        st.caption("🔴 유망/상승(Hot) ↔ 🔵 소외/하락(Cold) | 박스 크기는 시가총액 비중입니다.")
-        
-        treemap_data = []
-        for res in st.session_state['all_stocks']:
-            display_name = f"📌 {res['종목명']}" if res['종목명'] in my_portfolio else res['종목명']
-            
-            if not any(res['종목명'] in d['표시명'] for d in treemap_data):
-                treemap_data.append({
-                    '섹터': res['섹터'], 
-                    '표시명': display_name, 
-                    '점수': res['점수'], 
-                    '크기': res['시가총액']
-                })
+def ret(close, days):
+    if close.empty: return 0.0
+    p = close[close.index <= close.index[-1] - pd.Timedelta(days=days)]
+    if p.empty: return 0.0
+    return (close.iloc[-1] / p.iloc[-1] - 1) * 100 if p.iloc[-1] > 0 else 0.0
 
-        df_tree = pd.DataFrame(treemap_data)
-        df_tree['전체시장'] = "KOSPI / KOSDAQ"
-
-        fig = px.treemap(
-            df_tree, path=['전체시장', '섹터', '표시명'], values='크기', color='점수',
-            color_continuous_scale=['#0b486b', '#3b8d99', '#cccccc', '#f56217', '#ff0000'],
-            range_color=[30, 90]
-        )
-        fig.update_layout(margin=dict(t=10, l=10, r=10, b=10), coloraxis_showscale=False)
-        fig.update_traces(textinfo="label", textfont=dict(size=15, color="white"), hoverinfo="label+value")
-        
-        st.plotly_chart(fig, use_container_width=True)
-
-    with tab_detail:
-        st.markdown("### 📈 종목 상세 정보 및 볼린저 밴드 조회")
-        
-        if 'all_stocks' in st.session_state:
-            stock_names = list(set([s['종목명'] for s in st.session_state['all_stocks']]))
-            selected_name = st.selectbox("👉 분석할 종목을 선택하세요:", stock_names)
-            
-            selected_data = next((item for item in st.session_state['all_stocks'] if item["종목명"] == selected_name), None)
-            
-            if selected_data:
-                with st.spinner("최신 뉴스 수집 중..."):
-                    news_list = get_robust_news(selected_name, 3)
-                
-                with st.container(border=True):
-                    col1, col2, col3 = st.columns([1, 1, 1])
-                    col1.metric("종목명", selected_name, selected_data['시그널'])
-                    col2.metric("소속 섹터 / 점수", f"{selected_data['섹터']} ({selected_data['점수']}점)")
-                    col3.metric("오늘 거래량", f"{selected_data['거래량']:,} 주")
-                    
-                    st.markdown("#### 📉 최근 3개월 볼린저 밴드 차트")
-                    st.caption("파란색: 종가 / 초록색: 상단 밴드 / 빨간색: 하단 밴드")
-                    if not selected_data['차트'].empty:
-                        # 💡 종가와 상/하단 밴드를 동시에 그립니다.
-                        st.line_chart(selected_data['차트'], use_container_width=True)
-                    else:
-                        st.write("차트 데이터를 불러올 수 없습니다.")
-                        
-                    st.markdown("#### 📰 최신 종목 뉴스")
-                    for news in news_list:
-                        st.markdown(f"- {news}")
+def analyze_krx(code, name, sector_name="
